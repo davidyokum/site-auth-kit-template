@@ -1,15 +1,12 @@
 /**
- * The auth matrix's test people. Each one is a token signed by the test issuer plus how the
- * scripted Cognito describes them (lib/dev/matrix.on.ts). The first seven mirror personas.json;
- * the last four are the lifecycle cases the standard cares about.
+ * The auth matrix's test people, in auth-kit's `MatrixPersonaSpec` shape: the groups in each one's
+ * token, plus how the scripted Cognito (auth-kit's matrix server mode) describes them. The first six
+ * mirror personas.json; the last four are the lifecycle cases the standard cares about. With
+ * `anonymous`, that's 11.
  */
-import type { MatrixFixtureUser } from '@/lib/dev/matrix-types';
+import type { MatrixPersonaSpec } from 'auth-kit/testing';
 
-export interface MatrixPersonaSpec {
-  /** Groups in the access token. */
-  groups: string[];
-  /** Everything else the scripted Cognito should say about them. */
-  cognito?: Pick<MatrixFixtureUser, 'liveGroups' | 'enabled' | 'sessionRevoked' | 'factors'>;
+export interface SiteMatrixPersona extends MatrixPersonaSpec {
   /** Why this persona exists. */
   why: string;
 }
@@ -23,33 +20,48 @@ export const MATRIX_PERSONAS = {
   owner: { groups: ['superadmin'], why: 'Everything (superadmin, shown as Owner).' },
   noAuthenticator: {
     groups: [],
-    cognito: { factors: { configured: ['PASSWORD'], mfa: [] } },
+    factors: { configured: ['PASSWORD'], mfa: [] },
     why: 'A password user without an authenticator: only the setup page lets them in.',
   },
   demotedAdmin: {
     groups: ['admin'],
-    cognito: { liveGroups: [] },
+    liveGroups: [],
     why: 'Token still says admin, Cognito says member: admin pages (checked live) refuse at once.',
   },
   disabledAdmin: {
     groups: ['admin'],
-    cognito: { enabled: false },
+    enabled: false,
     why: 'Disabled after the token was issued: Cognito refuses the token’s factor check, so every check fails.',
   },
   revokedSession: {
     groups: ['editor'],
-    cognito: { sessionRevoked: true },
+    sessionRevoked: true,
     why: 'Signed out everywhere: Cognito refuses the session, so its token stops working.',
   },
-} as const satisfies Record<string, MatrixPersonaSpec>;
+} as const satisfies Record<string, SiteMatrixPersona>;
 
-export type MatrixPersonaName = keyof typeof MATRIX_PERSONAS | 'anonymous';
+export type MatrixPersonaKey = keyof typeof MATRIX_PERSONAS;
+export type MatrixPersonaName = MatrixPersonaKey | 'anonymous';
 
-/** What the globalSetup hands the tests (strings only: it crosses a process boundary). */
+/** The specs `startMatrixServer` takes (the same personas, without `why`). */
+export function matrixPersonaSpecs(): Record<MatrixPersonaKey, MatrixPersonaSpec> {
+  const specs = {} as Record<MatrixPersonaKey, MatrixPersonaSpec>;
+  for (const [name, persona] of Object.entries(MATRIX_PERSONAS) as [MatrixPersonaKey, SiteMatrixPersona][]) {
+    const spec: MatrixPersonaSpec & { why?: string } = { ...persona };
+    delete spec.why;
+    specs[name] = spec;
+  }
+  return specs;
+}
+
+/**
+ * What the globalSetup hands the tests. Plain data only: it crosses a process boundary, so the
+ * server's functions (stop, log, the issuer) stay in the setup.
+ */
 export interface MatrixContext {
   baseUrl: string;
   clientId: string;
-  personas: Record<keyof typeof MATRIX_PERSONAS, { username: string; sub: string; accessToken: string; idToken: string }>;
+  personas: Record<MatrixPersonaKey, { username: string; sub: string; accessToken: string; idToken: string; cookie: string }>;
 }
 
 declare module 'vitest' {

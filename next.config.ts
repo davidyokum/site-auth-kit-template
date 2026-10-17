@@ -1,4 +1,4 @@
-import { withDevKit } from 'auth-kit/dev';
+import { DEV_ALIAS, DEV_MATRIX_ALIAS, withDevKit } from 'auth-kit/dev';
 import type { NextConfig } from 'next';
 import { staticSecurityHeaders } from './lib/security-headers';
 
@@ -19,14 +19,11 @@ const config: NextConfig = {
  * The localhost kit stays out of every build (auth-kit/dev, `withDevKit`):
  * - files ending in `.dev.ts` are routes only under `next dev` (app/api/dev/sign-in/route.dev.ts);
  * - `@/dev` resolves to lib/dev/on.tsx under `next dev`, and to lib/dev/off.tsx in every build;
- * - `@/dev-matrix` likewise: lib/dev/matrix.on.ts (the auth-matrix test server) or matrix.off.ts.
+ * - `@/dev-matrix` likewise: lib/dev/matrix.on.ts (auth-kit's matrix server mode) or matrix.off.ts.
+ * auth-kit's DEV_ALIAS and DEV_MATRIX_ALIAS name exactly these files. tsconfig.json's `paths` point
+ * both aliases at the off modules, so type checks see what builds get.
  * `npm run check:prod-build` proves a build contains none of it.
  */
-const nextConfig = (phase: string) =>
-  withDevKit(phase, withDevKit(phase, config), {
-    alias: '@/dev-matrix',
-    on: './lib/dev/matrix.on.ts',
-    off: './lib/dev/matrix.off.ts',
-  });
+const nextConfig = (phase: string) => withDevKit(phase, config, { aliases: [DEV_ALIAS, DEV_MATRIX_ALIAS] });
 
 export default nextConfig;

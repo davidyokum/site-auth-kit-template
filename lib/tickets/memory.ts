@@ -1,7 +1,8 @@
 /**
  * An in-memory ticket store with the same behavior as the DynamoDB one. Used by the unit tests and
- * by the auth-matrix dev server (lib/dev/matrix.on.ts). Never in production: it forgets everything
- * on restart, and lib/tickets/index.ts never chooses it outside those two.
+ * by the auth-matrix dev server (lib/tickets/index.ts, through auth-kit's matrix server mode). Never
+ * in production: it forgets everything on restart, and lib/tickets/index.ts never chooses it outside
+ * those two.
  */
 import { randomUUID } from 'node:crypto';
 import { type NewTicket, type Ticket, type TicketStore, TICKET_LIMITS } from './types';

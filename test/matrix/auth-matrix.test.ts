@@ -11,20 +11,20 @@
  * When you add a page or route: add a row here. When you add a role: add a persona in personas.ts
  * and its expectation on every row.
  */
-import { type MatrixRoute, amplifyCookiePersona, assertAuthMatrix, routesFromNextBuild, tamperToken } from 'auth-kit/testing';
+import { type MatrixRoute, type PersonaDefinition, assertAuthMatrix, routesFromNextBuild, tamperToken } from 'auth-kit/testing';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, inject, it } from 'vitest';
-import { MATRIX_PERSONAS, type MatrixPersonaName } from './personas';
+import { MATRIX_PERSONAS, type MatrixPersonaKey, type MatrixPersonaName } from './personas';
 
 const ROOT = join(import.meta.dirname, '..', '..');
-const { baseUrl, clientId, personas } = inject('matrix');
+// From global-setup.ts (auth-kit's startMatrixServer): each persona's Amplify session cookies and tokens.
+const { baseUrl, personas } = inject('matrix');
 
 type Expect = Record<MatrixPersonaName, number>;
-const persona = (name: keyof typeof MATRIX_PERSONAS) => amplifyCookiePersona({ clientId, ...personas[name] });
-const cookieOf = (name: keyof typeof MATRIX_PERSONAS) => new Headers(persona(name).headers as HeadersInit).get('cookie') ?? '';
-const send = (path: string, init: RequestInit & { as?: keyof typeof MATRIX_PERSONAS } = {}) => {
+const persona = (name: MatrixPersonaKey): PersonaDefinition => ({ headers: { cookie: personas[name].cookie } });
+const send = (path: string, init: RequestInit & { as?: MatrixPersonaKey } = {}) => {
   const headers = new Headers(init.headers);
-  if (init.as) headers.set('cookie', cookieOf(init.as));
+  if (init.as) headers.set('cookie', personas[init.as].cookie);
   return fetch(new URL(path, baseUrl), { ...init, headers, redirect: 'manual' });
 };
 
@@ -139,7 +139,7 @@ describe('auth matrix', () => {
       appRoutes: routesFromNextBuild(join(ROOT, '.next')),
       personas: {
         anonymous: {},
-        ...Object.fromEntries((Object.keys(MATRIX_PERSONAS) as (keyof typeof MATRIX_PERSONAS)[]).map((name) => [name, persona(name)])),
+        ...Object.fromEntries((Object.keys(MATRIX_PERSONAS) as MatrixPersonaKey[]).map((name) => [name, persona(name)])),
       },
       params: { id: memberTicketId },
       routes,
@@ -161,7 +161,7 @@ describe('what the matrix rows can’t express', () => {
   });
 
   it('lists are filtered on the server: another member never sees the ticket; staff do', async () => {
-    const ids = async (as: keyof typeof MATRIX_PERSONAS) => {
+    const ids = async (as: MatrixPersonaKey) => {
       const response = await send('/api/tickets', { as });
       expect(response.status).toBe(200);
       return ((await response.json()) as { tickets: { id: string }[] }).tickets.map((t) => t.id);
