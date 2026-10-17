@@ -1,8 +1,9 @@
 /**
  * Grants and removals alert a named person (03 §2 Admin area). auth-kit's People actions call
  * `onChange` with each completed change's audit row; this decides which ones matter and emails
- * `site.alertEmails` through SES from the site's sender. Every alert is also logged, so it reaches
- * the server logs even before anyone is named.
+ * `site.alertEmails` through SES from the site's sender, with the help mailbox as Reply-To and the
+ * family footer (lib/email.ts). Every alert is also logged, so it reaches the server logs even
+ * before anyone is named.
  *
  * Owner grants get a second, separate alert from auth-kit itself (every owner is emailed, and the
  * grant is undone if that email can't be sent); that one isn't optional.
@@ -11,6 +12,7 @@ import 'server-only';
 import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
 import type { AuditEvent } from 'auth-kit/admin';
 import { site } from '@/site.config';
+import { replyToAddresses, senderMailbox, withFooterText } from './email';
 import { outputs } from './outputs';
 
 /** The people changes a named person hears about: anything that grants or removes access. */
@@ -61,11 +63,13 @@ export async function alertOnPeopleChange(event: AuditEvent): Promise<void> {
   console.warn(JSON.stringify({ alert: 'people-change', action: event.action, auditId: event.id, actor: event.actor.sub, target: event.target?.sub }));
   if (site.alertEmails.length === 0) return;
   ses ??= new SESv2Client({ region: outputs.auth.aws_region });
+  const replyTo = replyToAddresses();
   await ses.send(
     new SendEmailCommand({
-      FromEmailAddress: `${site.email.fromName} <${site.email.fromAddress}>`,
+      FromEmailAddress: senderMailbox(),
       Destination: { ToAddresses: [...site.alertEmails] },
-      Content: { Simple: { Subject: { Data: subject, Charset: 'UTF-8' }, Body: { Text: { Data: text, Charset: 'UTF-8' } } } },
+      ...(replyTo.length > 0 && { ReplyToAddresses: replyTo }),
+      Content: { Simple: { Subject: { Data: subject, Charset: 'UTF-8' }, Body: { Text: { Data: withFooterText(text), Charset: 'UTF-8' } } } },
     }),
   );
 }

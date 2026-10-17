@@ -11,7 +11,8 @@ enforces it; this file says how to work inside it.
 Fill in when the site is created (03 §2 Assurance: tier, pool, and account are recorded here).
 
 - **Tier:** 2 (named people). See `site.config.ts`.
-- **AWS account and profile:** `deploy.config.json` (every AWS-touching script checks it first).
+- **AWS account, profile, and Amplify app ID:** `deploy.config.json` (every AWS-touching script checks it
+  first; the hygiene test allows its `awsAccountId` and `amplifyAppId` and no other IDs).
 - **Pools:** one per Amplify branch, plus each developer's sandbox. Never shared, never hand-edited.
 
 ## Rules
@@ -41,8 +42,9 @@ Fill in when the site is created (03 §2 Assurance: tier, pool, and account are 
    (granting a role, exporting, deleting) add `recentSignIn: true`. Changes go through
    `recordChange` (or auth-kit's People actions, which log for you).
 8. **Don't weaken the walls.** No `'unsafe-inline'` scripts in the CSP, no `dangerouslySetInnerHTML`,
-   no catch-all public routes, no imports of `auth-kit/dev`, `auth-kit/dev/menu`, `auth-kit/testing`,
-   or `lib/dev/*` from code that ships (ESLint and the unit tests refuse them).
+   no catch-all public routes, no imports of `auth-kit/dev`, `auth-kit/dev/menu`, `auth-kit/testing`
+   (or `auth-kit/testing/matrix-server`), or `lib/dev/*` from code that ships (ESLint and the unit
+   tests refuse them).
 9. **AWS only through the preflight, and no deploys without the owner's go-ahead.** Never run an
    unqualified `aws` command. Use `npm run sandbox`, `npm run personas:seed`,
    `npm run preview:password`, which check the account in `deploy.config.json` first. Tests never
@@ -67,11 +69,14 @@ npm run personas:seed    # seed personas into the sandbox (account-checked)
 
 ## Layout
 
-- `site.config.ts` the site's identity; `deploy.config.json` where it deploys
-- `amplify/` the backend: auth preset, audit log, tickets table, SSR compute role
+- `site.config.ts` the site's identity, including its family; `deploy.config.json` where it deploys
+- `site.families.ts` the family table: sender display name and email footer text (themes later);
+  the only file allowed to name an employer (with its unit test)
+- `amplify/` the backend: auth preset (WAF rule modes in `auth/resource.ts`), audit log, invite-expiry schedule, tickets table, SSR compute role
 - `proxy.ts` default-deny proxy, token checks, session refresh, per-request CSP
 - `lib/auth.ts` `auth` and `pages` guards; `lib/capabilities.ts` the one capability map
-- `lib/admin.ts`, `lib/audit-log.ts`, `lib/alerts.ts` the admin area's actions, log, and alerts
+- `lib/admin.ts`, `lib/audit-log.ts`, `lib/alerts.ts` the admin area's actions, log, and alerts;
+  `lib/email.ts` the sender, Reply-To, and footer on the email the site sends
 - `lib/tickets/` the sample records (replace with your own; keep the pattern)
 - `lib/dev/` dev-only code (see its README); `app/api/dev/sign-in/route.dev.ts` "Sign in as…"
 - `app/` pages: `/` and `/sign-in` public; `/account`, `/app` members; `/admin` owners and admins

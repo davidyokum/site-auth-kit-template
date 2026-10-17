@@ -1,13 +1,15 @@
 /**
  * Which ticket store the server uses: the DynamoDB table from amplify_outputs.json (your sandbox
  * locally, the branch's table on Amplify Hosting). Under the auth-matrix dev server only, an
- * in-memory store. There is no silent fallback: no table means a clear error, never data that
- * quietly vanishes on restart.
+ * in-memory store, one per server process: auth-kit's `shared(...)` keeps it across the proxy's,
+ * pages', and routes' bundles, so a ticket the API files shows on the page. There is no silent
+ * fallback: no table means a clear error, never data that quietly vanishes on restart.
  */
 import 'server-only';
 import { matrixOverrides } from '@/dev-matrix';
 import { outputs } from '@/lib/outputs';
 import { createDynamoTicketStore } from './dynamo';
+import { createMemoryTicketStore } from './memory';
 import type { TicketStore } from './types';
 
 let store: TicketStore | undefined;
@@ -15,7 +17,7 @@ let store: TicketStore | undefined;
 export function ticketStore(): TicketStore {
   if (store) return store;
   const matrix = matrixOverrides();
-  if (matrix) return (store = matrix.tickets);
+  if (matrix) return (store = matrix.shared('tickets', createMemoryTicketStore));
   const tableName = outputs.custom?.ticketsTable;
   if (!tableName) {
     throw new Error(

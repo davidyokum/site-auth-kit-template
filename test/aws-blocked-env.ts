@@ -2,7 +2,8 @@
  * Environment that makes AWS unreachable from tests: no credentials can resolve (no keys, a profile
  * that doesn't exist, empty config and credentials files, no instance metadata), so a call that
  * slips past a mock fails at credential lookup and never reaches AWS. Used by the unit tests
- * (vitest.config.ts) and the auth-matrix dev server (test/matrix/global-setup.ts).
+ * (vitest.config.ts). The auth-matrix dev server gets auth-kit's own copy from `startMatrixServer`
+ * (test/matrix/global-setup.ts), which nothing can override.
  */
 export const AWS_BLOCKED_ENV: Record<string, string> = {
   AWS_PROFILE: 'tests-have-no-aws',

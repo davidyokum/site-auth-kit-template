@@ -3,18 +3,22 @@
  * Errors, including "couldn't check" (auth-kit's 503 when Cognito or its keys can't be reached).
  * That is never treated as signed out or allowed: the page stays closed and says so.
  *
- * Production builds hide server error details from the browser (only `digest` survives), so this
- * page can name the sign-in service only under `next dev`; the wording is honest either way.
+ * Production builds hide server error details from the browser (the name and message are gone;
+ * only `digest` survives). auth-kit's `AuthUnavailableError` carries its own digest, which Next
+ * keeps, so `isAuthUnavailableError` recognizes it in development and production alike. The
+ * reference matches the server's log line for that error.
  */
+import { isAuthUnavailableError } from 'auth-kit/client';
+
 export default function ErrorPage({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
-  const unavailable = error.name === 'AuthUnavailableError';
+  const unavailable = isAuthUnavailableError(error);
   return (
     <div className="stack">
       <h1>{unavailable ? 'Can’t check your sign-in right now' : 'This page couldn’t load'}</h1>
       <p>
         {unavailable
           ? 'The sign-in service didn’t answer, so this page stayed closed. Nothing was shown or changed.'
-          : 'Something failed on the server. If it was the sign-in check, the page stayed closed; nothing was shown or changed.'}
+          : 'Something failed on the server. Try again, and if it keeps happening, quote the reference below.'}
       </p>
       {error.digest && <p className="muted small">Reference: {error.digest}</p>}
       <p>

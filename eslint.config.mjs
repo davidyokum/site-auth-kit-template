@@ -14,9 +14,13 @@ export default defineConfig([
         'error',
         {
           paths: [
-            { name: 'auth-kit/dev', message: 'Dev-only: import it only from lib/dev/kit.ts, lib/dev/*.on.ts(x), or *.dev.ts routes.' },
+            { name: 'auth-kit/dev', message: 'Dev-only: import it only from lib/dev/kit.ts, lib/dev/on.tsx, next.config.ts, or *.dev.ts routes.' },
             { name: 'auth-kit/dev/menu', message: 'Dev-only: import it only from lib/dev/on.tsx.' },
             { name: 'auth-kit/testing', message: 'Test-only: never import it from app code.' },
+            {
+              name: 'auth-kit/testing/matrix-server',
+              message: 'Dev-only: lib/dev/matrix.on.ts re-exports it; app code imports matrixOverrides from @/dev-matrix.',
+            },
           ],
           patterns: [{ group: ['@/lib/dev/*'], message: 'Use the @/dev or @/dev-matrix alias: it resolves to the off module in builds.' }],
         },

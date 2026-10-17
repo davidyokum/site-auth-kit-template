@@ -1,5 +1,6 @@
+import { newCspNonce, nonceCspHeaders } from 'auth-kit/proxy';
 import { describe, expect, it } from 'vitest';
-import { BASELINE_CSP, contentSecurityPolicy, newNonce, staticSecurityHeaders } from '@/lib/security-headers';
+import { BASELINE_CSP, contentSecurityPolicy, staticSecurityHeaders } from '@/lib/security-headers';
 
 const directive = (csp: string, name: string) =>
   csp
@@ -8,7 +9,8 @@ const directive = (csp: string, name: string) =>
     .find((d) => d === name || d.startsWith(`${name} `));
 
 describe('the per-request Content-Security-Policy', () => {
-  const nonce = newNonce();
+  // proxy.ts gets each request's nonce from auth-kit's nonceCspHeaders, which uses newCspNonce.
+  const nonce = newCspNonce();
   const prod = contentSecurityPolicy({ nonce, dev: false, region: 'us-east-1' });
   const dev = contentSecurityPolicy({ nonce, dev: true, region: 'us-east-1' });
 
@@ -45,12 +47,33 @@ describe('the per-request Content-Security-Policy', () => {
     );
   });
 
-  it('makes a fresh 128-bit nonce each time, and refuses a weak one or a bad region', () => {
-    const nonces = new Set(Array.from({ length: 50 }, newNonce));
-    expect(nonces.size).toBe(50);
-    expect(atob(newNonce()).length).toBe(16);
+  it('refuses a weak nonce or a bad region', () => {
     expect(() => contentSecurityPolicy({ nonce: 'abc', dev: false, region: 'us-east-1' })).toThrow(/nonce/);
     expect(() => contentSecurityPolicy({ nonce, dev: false, region: "us-east-1; script-src *" })).toThrow(/Region/);
+  });
+});
+
+describe('the proxy’s CSP hook (auth-kit’s nonceCspHeaders with this policy, as proxy.ts wires it)', () => {
+  const hook = nonceCspHeaders((n) => contentSecurityPolicy({ nonce: n, dev: false, region: 'us-east-1' }));
+  const run = async () => {
+    const headers = await hook({} as never);
+    const request = new Headers(headers?.request);
+    const response = new Headers(headers?.response);
+    return { nonce: request.get('x-nonce') ?? '', request: request.get('content-security-policy') ?? '', response: response.get('content-security-policy') ?? '' };
+  };
+
+  it('puts this policy, with a fresh 128-bit nonce, on the request (for Next) and the response (for the browser)', async () => {
+    const { nonce, request, response } = await run();
+    expect(atob(nonce).length).toBe(16);
+    expect(request).toBe(contentSecurityPolicy({ nonce, dev: false, region: 'us-east-1' }));
+    expect(response).toBe(request);
+    expect(directive(response, 'script-src')).toContain(`'nonce-${nonce}'`);
+  });
+
+  it('makes a new nonce for every request', async () => {
+    const nonces = new Set<string>();
+    for (let i = 0; i < 50; i++) nonces.add((await run()).nonce);
+    expect(nonces.size).toBe(50);
   });
 });
 

@@ -10,12 +10,13 @@
  * which a production build doesn't have until it runs on its branch.
  */
 import 'server-only';
-import { createPeopleActions, createSesInviteMailer, type PeopleActions } from 'auth-kit/admin';
+import { createPeopleActions, type PeopleActions } from 'auth-kit/admin';
 import { matrixOverrides } from '@/dev-matrix';
 import { site } from '@/site.config';
 import { alertOnPeopleChange } from './alerts';
 import { auditLog } from './audit-log';
 import { auth } from './auth';
+import { createSiteMailer } from './email';
 import { publicOrigin } from './origin';
 import { outputs } from './outputs';
 
@@ -28,8 +29,9 @@ export function peopleActions(): PeopleActions {
     auth,
     auditLog: auditLog(),
     // Everyday pools invite with an emailed code: no password, no `email_verified`, and the app's own
-    // email (Cognito's is suppressed). A Tier 3 admin pool uses inviteMode: 'temporary-password'.
-    mailer: matrix?.mailer ?? createSesInviteMailer({ from: `${site.email.fromName} <${site.email.fromAddress}>`, region: outputs.auth.aws_region }),
+    // email (Cognito's is suppressed), from the family's sender with its Reply-To and footer
+    // (lib/email.ts). A Tier 3 admin pool uses inviteMode: 'temporary-password'.
+    mailer: matrix?.mailer ?? createSiteMailer({ region: outputs.auth.aws_region }),
     siteName: site.name,
     signInUrl: `${publicOrigin()}/sign-in`,
     inviteDomains: site.inviteDomains,

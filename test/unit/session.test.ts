@@ -22,6 +22,12 @@ describe('the pool settings (amplify/auth/resource.ts) and the app agree', () =>
     expect(pool.waf.mode).not.toBe('off');
   });
 
+  it('the created web ACL counts sign-in attempts first and blocks the overall per-IP rule from day one (auth-kit ADR 0017)', () => {
+    // A site that switches to a shared ACL ({ webAclArn }) sets the modes where that ACL is created.
+    if (pool.waf.mode !== 'create') return;
+    expect({ signInRule: pool.waf.signInRule, overallRule: pool.waf.overallRule }).toEqual({ signInRule: 'count', overallRule: 'block' });
+  });
+
   it('passkeys wait for the final domain (off until site.config sets a relying party)', () => {
     expect(pool.passkeys === null).toBe(site.passkeys === false);
   });

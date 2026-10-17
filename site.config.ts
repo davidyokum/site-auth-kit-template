@@ -1,15 +1,29 @@
 /**
  * The site's identity: the one file to edit first when starting a new site from this template.
  *
- * Pure data with no imports, because both halves of the project read it: the Next.js app (titles,
- * sign-in screens, invite emails) and the Amplify backend in `amplify/` (pool tags, sender address).
+ * Plain data, because both halves of the project read it: the Next.js app (titles, sign-in screens,
+ * invite emails) and the Amplify backend in `amplify/` (pool tags, sender address). Its one import
+ * is site.families.ts, plain data too; neither uses path aliases.
  *
  * Everything here is public (it ends up in the browser bundle or in AWS tags). Never put a secret,
  * an AWS account ID, or a pool ID here. Where to deploy lives in `deploy.config.json`.
  */
+import type { SiteFamily } from './site.families';
+
 export const site = {
   /** Shown in titles, the sign-in screens, invite emails, and people's authenticator apps. */
   name: 'Example Site',
+
+  /**
+   * Who runs the site: one of the families in site.families.ts ('personal' is Yokum Lab). It sets
+   * the sender's display name on all auth email (the site's name, plus the family's short name for
+   * the work families) and the footer of the email the site sends. The design work's per-family
+   * theme will hang off it too. The template ships 'personal'.
+   */
+  family: 'personal' as SiteFamily,
+
+  /** UNC only: the unit, as in "A UNC-Chapel Hill {unit} project". Null: "A UNC-Chapel Hill project." */
+  familyUnit: null as string | null,
 
   /** Slug for AWS tags and metric names: lowercase letters, digits, and hyphens. */
   project: 'example-site',
@@ -25,12 +39,17 @@ export const site = {
   tier: 2,
 
   /**
-   * Auth email (emailed codes, invites) goes through Amazon SES from this address. Its domain must be
-   * a verified SES identity in the AWS account you deploy to, with SPF, DKIM, and DMARC published.
+   * Auth email (emailed codes, invites, alerts) goes through Amazon SES from `fromAddress`. Its domain
+   * must be a verified SES identity in the AWS account you deploy to, with SPF, DKIM, and DMARC
+   * published. The sender's display name comes from `name` and `family`.
+   *
+   * `replyTo`: the family's help mailbox. Auth email carries it as Reply-To (Cognito's code emails,
+   * invites, alerts), and the site's own email names it in the footer ("Help: …"). Null: no Reply-To
+   * and no help line; set one before real people get email, so replies don't go to `fromAddress`.
    */
   email: {
     fromAddress: 'noreply@example.com',
-    fromName: 'Example Site',
+    replyTo: null as string | null,
   },
 
   /**

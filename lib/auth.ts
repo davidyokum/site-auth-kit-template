@@ -22,9 +22,10 @@ import { outputs } from './outputs';
 export const auth = createServerAuth({
   ...poolConfigFromAmplifyOutputs(outputs),
   capabilities,
-  // Only under `next dev` with AUTH_KIT_MATRIX=1 (the auth-matrix tests): trust the test issuer's
-  // keys and a scripted Cognito. In every build `@/dev-matrix` is lib/dev/matrix.off.ts, which
-  // returns null, so production code can't reach this. See lib/dev/README.md.
+  // Only under `next dev` with AUTH_KIT_MATRIX=1 (the auth-matrix tests): auth-kit's matrix server
+  // mode, which trusts the test issuer's keys (and fetches no others) and asks a scripted Cognito.
+  // In every build `@/dev-matrix` is lib/dev/matrix.off.ts, which returns null, so production code
+  // can't reach this. See lib/dev/README.md.
   ...matrixOverrides()?.serverAuth,
 });
 

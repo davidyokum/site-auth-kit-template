@@ -4,8 +4,9 @@
  * new page, route, or action without a server-side check before it ever runs, and keeps the
  * dev-only code where it belongs.
  */
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { DEV_ALIAS, DEV_MATRIX_ALIAS } from 'auth-kit/dev';
 import { describe, expect, it } from 'vitest';
 import { PUBLIC_PAGES, PUBLIC_ROUTES } from '@/lib/public-routes';
 
@@ -20,6 +21,20 @@ function walk(dir: string): string[] {
 
 const appFiles = walk(join(ROOT, 'app'));
 const source = (file: string) => readFileSync(join(ROOT, file), 'utf8');
+
+/** What a module loads when it runs: `import … from`, `export … from`, `import '…'`. `import type` is erased, so it's skipped. */
+const runtimeImports = (file: string) =>
+  [...source(file).matchAll(/^\s*(?:import|export)\s+(?!type\b)(?:[^'";]*?\s+from\s+)?['"]([^'"]+)['"]/gm)].map((m) => m[1]);
+
+/** The names a module exports: declarations and `export { a as b }` lists (re-exports included). */
+const exportedNames = (file: string) => {
+  const text = source(file);
+  const declared = [...text.matchAll(/export (?:async )?(?:function|const|let|class) (\w+)/g)].map((m) => m[1] ?? '');
+  const listed = [...text.matchAll(/export\s*\{([^}]*)\}/g)].flatMap((m) =>
+    (m[1] ?? '').split(',').map((part) => part.trim().split(/\s+as\s+/).pop() ?? '').filter(Boolean),
+  );
+  return [...declared, ...listed].sort();
+};
 
 /** A server-side check from lib/auth.ts, or auth-kit's People actions (which check live themselves). */
 const GUARD = /\b(?:pages|auth)\.require(?:User|Can|Group)\(|\bpeopleActions\(\)\.forms\.\w+\(/;
@@ -72,10 +87,12 @@ describe('every page, layout, route, and action checks on the server', () => {
     }
   });
 
-  it('routes that change data check the origin', () => {
+  it('routes that change data check the origin against the configured one (lib/origin.ts)', () => {
     for (const route of routes) {
       for (const handler of source(route).split(/export const (?=POST|PUT|PATCH|DELETE)/).slice(1)) {
-        expect(handler, `${route} changes data without assertSameOrigin`).toMatch(/assertSameOrigin\(/);
+        expect(handler, `${route} changes data without assertSameOrigin(request, { expectedOrigin: expectedOrigin() })`).toMatch(
+          /assertSameOrigin\(\s*request\s*,\s*\{\s*expectedOrigin:\s*expectedOrigin\(\)\s*\}\s*\)/,
+        );
       }
     }
   });
@@ -110,16 +127,25 @@ describe('dev-only code stays out of what ships', () => {
     expect(appFiles.filter((f) => f.startsWith('app/api/dev/') && !/\.dev\.tsx?$/.test(f))).toEqual([]);
   });
 
-  it('the "off" modules (what every build gets) import no dev code', () => {
+  it('the "off" modules (what every build gets) load no dev code (a type import is erased)', () => {
     for (const file of ['lib/dev/off.tsx', 'lib/dev/matrix.off.ts']) {
-      const imports = [...source(file).matchAll(/from\s+['"]([^'"]+)['"]/g)].map((m) => m[1]);
-      for (const spec of imports) expect(spec, `${file} imports ${spec}`).not.toMatch(/auth-kit\/(dev|testing)|\.\/kit$|matrix\.on|\.\/on$/);
+      for (const spec of runtimeImports(file)) expect(spec, `${file} imports ${spec}`).not.toMatch(/auth-kit\/(dev|testing)|\.\/kit$|matrix\.on|\.\/on$/);
     }
   });
 
   it('the on and off modules export the same names', () => {
-    const names = (file: string) => [...source(file).matchAll(/export (?:async )?function (\w+)/g)].map((m) => m[1]).sort();
-    expect(names('lib/dev/on.tsx')).toEqual(names('lib/dev/off.tsx'));
-    expect(names('lib/dev/matrix.on.ts')).toEqual(names('lib/dev/matrix.off.ts'));
+    expect(exportedNames('lib/dev/on.tsx')).toEqual(exportedNames('lib/dev/off.tsx'));
+    expect(exportedNames('lib/dev/matrix.on.ts')).toEqual(['matrixOverrides']);
+    expect(exportedNames('lib/dev/matrix.off.ts')).toEqual(['matrixOverrides']);
+  });
+
+  it('next.config.ts uses auth-kit’s aliases, which name this repo’s on/off files; type checks see the off ones', () => {
+    expect(source('next.config.ts')).toMatch(/withDevKit\(phase, config, \{ aliases: \[DEV_ALIAS, DEV_MATRIX_ALIAS\] \}\)/);
+    const tsconfig = JSON.parse(source('tsconfig.json').replace(/^\s*\/\/.*$/gm, '')) as { compilerOptions: { paths: Record<string, string[]> } };
+    for (const { alias, on, off } of [DEV_ALIAS, DEV_MATRIX_ALIAS]) {
+      expect(existsSync(join(ROOT, on)), `${alias} → ${on}`).toBe(true);
+      expect(existsSync(join(ROOT, off)), `${alias} → ${off}`).toBe(true);
+      expect(tsconfig.compilerOptions.paths[alias]).toEqual([off]);
+    }
   });
 });

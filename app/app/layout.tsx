@@ -5,11 +5,12 @@
  * The authenticator rule is enforced here on the server: `requireUser()` refuses a password user
  * without an authenticator code, and the page guard sends them to /account/authenticator.
  *
- * auth-kit's client-side `TOTPEnrollmentGate` is deliberately NOT wrapped around `children` here:
- * it renders only "Checking your account…" during server rendering, so in a layout it would hide
- * every page's content until a browser-side Cognito call returns, and it swallows nested pages'
- * status codes (a record page's 404 would go out as 200; the auth matrix catches that). The gate
- * lives on /account instead, inside the page, after the server check.
+ * auth-kit's client-side `TOTPEnrollmentGate` isn't wrapped around `children` here. The guard above
+ * already refuses a password user without an authenticator on every page below, and the gate is
+ * never a security boundary (React sends its children to the browser whatever it shows). It renders
+ * its children on the server, so it would no longer mask a nested page's 404 (auth-kit ADR 0015),
+ * but in a layout it would only hide every page until a browser round trip to Cognito. It lives on
+ * /account instead, inside the page, after the server check.
  */
 import type { ReactNode } from 'react';
 import { pages } from '@/lib/auth';

@@ -11,20 +11,20 @@
  * When you add a page or route: add a row here. When you add a role: add a persona in personas.ts
  * and its expectation on every row.
  */
-import { type MatrixRoute, amplifyCookiePersona, assertAuthMatrix, routesFromNextBuild, tamperToken } from 'auth-kit/testing';
+import { type MatrixRoute, type PersonaDefinition, assertAuthMatrix, routesFromNextBuild, tamperToken } from 'auth-kit/testing';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, inject, it } from 'vitest';
-import { MATRIX_PERSONAS, type MatrixPersonaName } from './personas';
+import { MATRIX_PERSONAS, type MatrixPersonaKey, type MatrixPersonaName } from './personas';
 
 const ROOT = join(import.meta.dirname, '..', '..');
-const { baseUrl, clientId, personas } = inject('matrix');
+// From global-setup.ts (auth-kit's startMatrixServer): each persona's Amplify session cookies and tokens.
+const { baseUrl, personas } = inject('matrix');
 
 type Expect = Record<MatrixPersonaName, number>;
-const persona = (name: keyof typeof MATRIX_PERSONAS) => amplifyCookiePersona({ clientId, ...personas[name] });
-const cookieOf = (name: keyof typeof MATRIX_PERSONAS) => new Headers(persona(name).headers as HeadersInit).get('cookie') ?? '';
-const send = (path: string, init: RequestInit & { as?: keyof typeof MATRIX_PERSONAS } = {}) => {
+const persona = (name: MatrixPersonaKey): PersonaDefinition => ({ headers: { cookie: personas[name].cookie } });
+const send = (path: string, init: RequestInit & { as?: MatrixPersonaKey } = {}) => {
   const headers = new Headers(init.headers);
-  if (init.as) headers.set('cookie', cookieOf(init.as));
+  if (init.as) headers.set('cookie', personas[init.as].cookie);
   return fetch(new URL(path, baseUrl), { ...init, headers, redirect: 'manual' });
 };
 
@@ -139,7 +139,7 @@ describe('auth matrix', () => {
       appRoutes: routesFromNextBuild(join(ROOT, '.next')),
       personas: {
         anonymous: {},
-        ...Object.fromEntries((Object.keys(MATRIX_PERSONAS) as (keyof typeof MATRIX_PERSONAS)[]).map((name) => [name, persona(name)])),
+        ...Object.fromEntries((Object.keys(MATRIX_PERSONAS) as MatrixPersonaKey[]).map((name) => [name, persona(name)])),
       },
       params: { id: memberTicketId },
       routes,
@@ -161,7 +161,7 @@ describe('what the matrix rows can’t express', () => {
   });
 
   it('lists are filtered on the server: another member never sees the ticket; staff do', async () => {
-    const ids = async (as: keyof typeof MATRIX_PERSONAS) => {
+    const ids = async (as: MatrixPersonaKey) => {
       const response = await send('/api/tickets', { as });
       expect(response.status).toBe(200);
       return ((await response.json()) as { tickets: { id: string }[] }).tickets.map((t) => t.id);
@@ -172,7 +172,7 @@ describe('what the matrix rows can’t express', () => {
     expect(await ids('admin')).toContain(memberTicketId);
   });
 
-  it('a state change from another site is refused (403 origin_mismatch)', async () => {
+  it('a state change from another origin is refused (403 origin_mismatch)', async () => {
     const response = await send('/api/tickets', {
       as: 'member',
       method: 'POST',
@@ -181,6 +181,15 @@ describe('what the matrix rows can’t express', () => {
     });
     expect(response.status).toBe(403);
     expect(((await response.json()) as { error: string }).error).toBe('origin_mismatch');
+
+    // Only the configured origin counts (lib/origin.ts), not request.url's (next dev says localhost).
+    const localhost = await send('/api/tickets', {
+      as: 'member',
+      method: 'POST',
+      headers: { origin: baseUrl.replace('127.0.0.1', 'localhost'), 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'Wrong origin' }),
+    });
+    expect(localhost.status).toBe(403);
   });
 
   it('input is validated on the server (415 for non-JSON, 400 for a bad title)', async () => {
@@ -218,6 +227,21 @@ describe('what the matrix rows can’t express', () => {
     const scripts = html.match(/<script\b[^>]*>/g) ?? [];
     expect(scripts.length).toBeGreaterThan(0);
     for (const tag of scripts) expect(tag).toContain(`nonce="${nonce}"`);
+
+    // The proxy's own answers carry the policy too, with a fresh nonce.
+    const refusal = await send('/app');
+    expect(refusal.status).toBe(307);
+    const refusalCsp = refusal.headers.get('content-security-policy') ?? '';
+    expect(refusalCsp).toMatch(/script-src [^;]*'nonce-[A-Za-z0-9+/=]+'/);
+    expect(refusalCsp).not.toContain(`'nonce-${nonce}'`);
+  });
+
+  it('My account shows from the first paint: the authenticator gate follows the page’s guard (serverChecked)', async () => {
+    const response = await send('/account', { as: 'member' });
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toMatch(/data-auth-kit="totp-gate"[^>]*data-auth-kit-state="open"/);
+    expect(html).toMatch(/data-auth-kit-slot="content"(?![^>]*\bhidden)[^>]*>/);
   });
 
   it('"Sign in as…" is closed unless ALLOW_DEV_SIGNIN=1 (the matrix server sets 0)', async () => {

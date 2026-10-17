@@ -8,39 +8,27 @@
  * - **Refreshes** a genuine, merely expired Amplify session server-side (rate-limited).
  * - **Never the only gate.** Every route handler, server action, and data-loading component calls
  *   requireUser/requireCan itself; the auth matrix's "without proxy" pass fails any that don't.
- * - Sets the per-request Content-Security-Policy with a fresh nonce (lib/security-headers.ts).
+ * - **The per-request Content-Security-Policy** (lib/security-headers.ts), through auth-kit's
+ *   `nonceCspHeaders`: a fresh nonce per request, the policy on the request (Next reads the nonce
+ *   from it and stamps its own scripts; a client's own CSP request header is dropped) and on every
+ *   response, redirects and refusals included, and the nonce in `x-nonce` for pages.
  */
-import { amplifyAdapterRefresh, withAuthProxy } from 'auth-kit/proxy';
+import { amplifyAdapterRefresh, nonceCspHeaders, withAuthProxy } from 'auth-kit/proxy';
 import { fetchAuthSession } from 'aws-amplify/auth/server';
-import { NextRequest, type NextResponse } from 'next/server';
 import { runWithAmplifyServerContext } from '@/lib/amplify-server';
 import { auth } from '@/lib/auth';
 import { outputs } from '@/lib/outputs';
 import { PUBLIC_ROUTES } from '@/lib/public-routes';
-import { contentSecurityPolicy, newNonce } from '@/lib/security-headers';
+import { contentSecurityPolicy } from '@/lib/security-headers';
 
-const authProxy = withAuthProxy({
+const dev = process.env.NODE_ENV === 'development';
+
+export const proxy = withAuthProxy({
   auth,
   publicRoutes: PUBLIC_ROUTES,
   refresh: amplifyAdapterRefresh({ runWithAmplifyServerContext, fetchAuthSession }),
+  headers: nonceCspHeaders((nonce) => contentSecurityPolicy({ nonce, dev, region: outputs.auth.aws_region })),
 });
-
-export async function proxy(request: NextRequest): Promise<NextResponse> {
-  const nonce = newNonce();
-  const csp = contentSecurityPolicy({ nonce, dev: process.env.NODE_ENV === 'development', region: outputs.auth.aws_region });
-
-  // Next.js reads the nonce from the request's CSP header while rendering. withAuthProxy forwards the
-  // request headers it's given, so it gets a header-only copy of the request carrying the policy
-  // (always overwriting anything a client sent). It never reads the body; the route still receives
-  // the original request's body.
-  const headers = new Headers(request.headers);
-  headers.set('content-security-policy', csp);
-  headers.set('x-nonce', nonce);
-  const response = await authProxy(new NextRequest(request.url, { method: request.method, headers }));
-
-  response.headers.set('Content-Security-Policy', csp);
-  return response;
-}
 
 // Must be a literal: Next reads the matcher at build time.
 export const config = { matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'] };
