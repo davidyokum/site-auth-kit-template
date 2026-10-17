@@ -3,12 +3,11 @@
  * POST files one. Each handler checks the person itself (the proxy is never the only gate),
  * answers 401/403/404/503 through `withAuthErrors`, and is never cached.
  */
-import { recordChange } from 'auth-kit/admin';
 import { assertSameOrigin, PRIVATE_NO_STORE, withAuthErrors } from 'auth-kit/server';
-import { auditLog } from '@/lib/audit-log';
 import { auth } from '@/lib/auth';
 import { expectedOrigin } from '@/lib/origin';
 import { listLimit, ticketStore, validateTicketInput } from '@/lib/tickets';
+import { fileTicket } from '@/lib/tickets/file-ticket';
 
 const NO_STORE = { 'Cache-Control': PRIVATE_NO_STORE };
 
@@ -32,18 +31,15 @@ export const POST = withAuthErrors(async (request: Request) => {
   const input = validateTicketInput(body ?? {});
   if (!input.ok) return Response.json({ error: 'invalid_input', field: input.field, message: input.error }, { status: 400, headers: NO_STORE });
 
-  const store = ticketStore();
-  const ticket = await recordChange(auditLog(), {
-    intent: {
-      actor: { sub: user.sub, ...(user.profile?.email !== undefined && { email: user.profile.email }) },
-      action: 'tickets.create',
-      after: { title: input.title },
-      calls: ['PutItem tickets'],
-    },
-    run: async (steps) => {
-      const created = await steps.call('PutItem tickets', () => store.create({ ownerSub: user.sub, title: input.title, body: input.body }));
-      return { value: created, after: { id: created.id, title: created.title }, target: { recordId: created.id } };
-    },
-  });
-  return Response.json({ ticket }, { status: 201, headers: NO_STORE });
+  const result = await fileTicket(user, input);
+  if (!result.ok) {
+    return Response.json(
+      { error: 'audit_unavailable', message: "The activity log couldn't record this, so nothing was filed." },
+      { status: 503, headers: { ...NO_STORE, 'Retry-After': '5' } },
+    );
+  }
+  return Response.json(
+    { ticket: result.ticket, ...(!result.outcomeLogged && { warning: 'audit_incomplete' }) },
+    { status: 201, headers: NO_STORE },
+  );
 });

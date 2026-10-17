@@ -28,6 +28,7 @@
   "dependencies": {
     "@aws-amplify/adapter-nextjs": "^1.8.1",
     "@aws-sdk/client-dynamodb": "^3.1152.0",
+    "@aws-sdk/client-sesv2": "^3.1152.0",
     "@aws-sdk/lib-dynamodb": "^3.1152.0",
     "auth-kit": "https://github.com/davidyokum/auth-kit/releases/download/v0.1.1-alpha/auth-kit-0.1.1-alpha.tgz",
     "aws-amplify": "^6.22.2",
@@ -43,6 +44,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "aws-cdk-lib": "^2.273.0",
+    "aws-sdk-client-mock": "^4.1.0",
     "constructs": "^10.8.1",
     "eslint": "^9.39.0",
     "eslint-config-next": "16.4.2",

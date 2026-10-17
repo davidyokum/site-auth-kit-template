@@ -17,6 +17,7 @@ import { join } from 'node:path';
 import { createTestIssuer } from 'auth-kit/testing';
 import type { TestProject } from 'vitest/node';
 import { MATRIX_FIXTURE_ENV, type MatrixFixture } from '@/lib/dev/matrix-types';
+import { AWS_BLOCKED_ENV } from '../aws-blocked-env';
 import { MATRIX_PERSONAS, type MatrixContext } from './personas';
 
 const ROOT = join(import.meta.dirname, '..', '..');
@@ -49,9 +50,7 @@ function serverEnv(fixture: MatrixFixture): Record<string, string | undefined> {
     [MATRIX_FIXTURE_ENV]: JSON.stringify(fixture),
     // Values here win over .env.local (Next doesn't override variables already set).
     ALLOW_DEV_SIGNIN: '0',
-    AWS_PROFILE: 'auth-matrix-has-no-aws',
-    AWS_EC2_METADATA_DISABLED: 'true',
-    AWS_REGION: 'us-east-1',
+    ...AWS_BLOCKED_ENV,
     NEXT_TELEMETRY_DISABLED: '1',
     // A separate output folder, so a `npm run dev` you have open keeps its own (see next.config.ts).
     SITE_NEXT_DIST_DIR: '.next-matrix',
