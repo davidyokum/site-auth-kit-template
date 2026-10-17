@@ -8,7 +8,7 @@ import { accountMismatch, parseCallerIdentity, parseDeployConfig } from './deplo
 
 /**
  * @param {string} root  the project root (where deploy.config.json lives)
- * @returns {{ awsProfile: string, awsAccountId: string, region: string, arn: string }}
+ * @returns {{ awsProfile: string, awsAccountId: string, region: string, amplifyAppId: string | null, arn: string }}
  * @throws {Error} with a message that says exactly what to fix
  */
 export function assertAccount(root) {

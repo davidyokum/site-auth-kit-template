@@ -11,7 +11,8 @@ enforces it; this file says how to work inside it.
 Fill in when the site is created (03 §2 Assurance: tier, pool, and account are recorded here).
 
 - **Tier:** 2 (named people). See `site.config.ts`.
-- **AWS account and profile:** `deploy.config.json` (every AWS-touching script checks it first).
+- **AWS account, profile, and Amplify app ID:** `deploy.config.json` (every AWS-touching script checks it
+  first; the hygiene test allows its `awsAccountId` and `amplifyAppId` and no other IDs).
 - **Pools:** one per Amplify branch, plus each developer's sandbox. Never shared, never hand-edited.
 
 ## Rules

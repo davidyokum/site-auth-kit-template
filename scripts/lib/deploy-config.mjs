@@ -4,15 +4,21 @@
 /** The template's placeholder. A real site replaces it; the preflight refuses it. */
 export const PLACEHOLDER_ACCOUNT_ID = '000000000000';
 
+/** The shape of an Amplify Hosting app ID, e.g. as in `https://main.<app id>.amplifyapp.com`. */
+export const AMPLIFY_APP_ID_RE = /^d[a-z0-9]{13}$/;
+
 const PROFILE_RE = /^[A-Za-z0-9_.+=,@-]{1,64}$/;
 const REGION_RE = /^[a-z]{2}(?:-[a-z]+)+-\d$/;
-const KEYS = new Set(['awsProfile', 'awsAccountId', 'region']);
+const KEYS = new Set(['awsProfile', 'awsAccountId', 'region', 'amplifyAppId']);
 
 /**
  * Parses deploy.config.json. Throws one error listing every problem, so a misconfiguration can't
  * fall through to "use whatever the default profile is".
+ *
+ * `amplifyAppId` is optional: `null` (or absent) until the Amplify app exists, then its app ID. The
+ * repo's hygiene test allows exactly this ID (and `awsAccountId`) and still refuses any other.
  * @param {string} text
- * @returns {{ awsProfile: string, awsAccountId: string, region: string }}
+ * @returns {{ awsProfile: string, awsAccountId: string, region: string, amplifyAppId: string | null }}
  */
 export function parseDeployConfig(text) {
   let raw;
@@ -24,7 +30,7 @@ export function parseDeployConfig(text) {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) throw new Error('deploy.config.json must be a JSON object.');
   const problems = [];
   for (const key of Object.keys(raw)) if (!KEYS.has(key)) problems.push(`unknown key "${key}"`);
-  const { awsProfile, awsAccountId, region } = raw;
+  const { awsProfile, awsAccountId, region, amplifyAppId = null } = raw;
   if (typeof awsProfile !== 'string' || !PROFILE_RE.test(awsProfile)) {
     problems.push('awsProfile must name an AWS CLI profile, e.g. "personal"');
   } else if (awsProfile === 'default') {
@@ -36,8 +42,11 @@ export function parseDeployConfig(text) {
     problems.push(`awsAccountId is still the template's placeholder (${PLACEHOLDER_ACCOUNT_ID}): set the account this site deploys to`);
   }
   if (typeof region !== 'string' || !REGION_RE.test(region)) problems.push('region must be an AWS Region, e.g. "us-east-1"');
+  if (amplifyAppId !== null && (typeof amplifyAppId !== 'string' || !AMPLIFY_APP_ID_RE.test(amplifyAppId))) {
+    problems.push('amplifyAppId must be null or the Amplify app ID: "d" and 13 lowercase letters or digits');
+  }
   if (problems.length > 0) throw new Error(`deploy.config.json:\n- ${problems.join('\n- ')}`);
-  return { awsProfile, awsAccountId, region };
+  return { awsProfile, awsAccountId, region, amplifyAppId };
 }
 
 /**
