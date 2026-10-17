@@ -15,6 +15,7 @@ next-env.d.ts
 # Each environment writes its own; committing one would point every clone at that pool.
 # CI copies ci/amplify_outputs.placeholder.json (clearly fake) here before building.
 amplify_outputs*.json
+!ci/amplify_outputs.placeholder.json
 .amplify/
 
 # Test and tool output
