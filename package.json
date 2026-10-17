@@ -31,7 +31,7 @@
     "@aws-sdk/client-dynamodb": "^3.1152.0",
     "@aws-sdk/client-sesv2": "^3.1152.0",
     "@aws-sdk/lib-dynamodb": "^3.1152.0",
-    "auth-kit": "https://github.com/davidyokum/auth-kit/releases/download/v0.1.1-alpha/auth-kit-0.1.1-alpha.tgz",
+    "auth-kit": "https://github.com/davidyokum/auth-kit/releases/download/v0.1.2-alpha/auth-kit-0.1.2-alpha.tgz",
     "aws-amplify": "^6.22.2",
     "next": "16.4.2",
     "react": "19.3.1",
