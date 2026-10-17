@@ -20,6 +20,8 @@ export interface MatrixFixtureUser {
   liveGroups?: string[];
   /** False for an account disabled after its token was issued. Default true. */
   enabled?: boolean;
+  /** True after "sign out everywhere": Cognito refuses the token's session. Default false. */
+  sessionRevoked?: boolean;
   /** Their sign-in factors. Default: a password and an authenticator (what seeded personas have). */
   factors?: { configured: string[]; mfa: string[] };
 }

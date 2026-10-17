@@ -17,7 +17,7 @@
  */
 import { createMemoryAuditLog } from 'auth-kit/admin';
 import { DEV_SIGNIN_MARKER } from 'auth-kit/dev';
-import type { CognitoGateway, LiveUserState, UserAuthFactors } from 'auth-kit/server';
+import { type CognitoGateway, type LiveUserState, UnauthenticatedError, type UserAuthFactors } from 'auth-kit/server';
 import { createMemoryTicketStore } from '@/lib/tickets/memory';
 import { MATRIX_FIXTURE_ENV, type MatrixFixture, type MatrixFixtureUser, type MatrixOverrides } from './matrix-types';
 
@@ -34,6 +34,11 @@ function readFixture(): MatrixFixture {
   return fixture;
 }
 
+/**
+ * Answers the way Cognito does: `GetUserAuthFactors` with the person's own token is refused for a
+ * disabled account or a revoked session (auth-kit maps those to 401 `account_disabled` and
+ * `invalid_token`), and `AdminGetUser` reports the live status and groups.
+ */
 function scriptedGateway(users: ReadonlyMap<string, MatrixFixtureUser>): CognitoGateway {
   const find = (username: string) => {
     const user = users.get(username);
@@ -42,7 +47,10 @@ function scriptedGateway(users: ReadonlyMap<string, MatrixFixtureUser>): Cognito
   };
   return {
     async getUserAuthFactors({ username }): Promise<UserAuthFactors> {
-      return find(username).factors ?? SEEDED_FACTORS;
+      const user = find(username);
+      if (user.enabled === false) throw new UnauthenticatedError('account_disabled', 'This account is disabled.');
+      if (user.sessionRevoked === true) throw new UnauthenticatedError('invalid_token', 'Your session has ended. Sign in again.');
+      return user.factors ?? SEEDED_FACTORS;
     },
     async getLiveUserState(username): Promise<LiveUserState> {
       const user = find(username);
@@ -90,6 +98,25 @@ function scriptedPeopleClient(users: readonly MatrixFixtureUser[]): MatrixOverri
   return client as unknown as MatrixOverrides['peopleCognito'];
 }
 
+type SharedData = Pick<MatrixOverrides, 'auditLog' | 'tickets'>;
+
+/**
+ * The in-memory data, one copy per server process. The proxy, pages, and route handlers are
+ * bundled separately and each evaluates this module, but a ticket filed through the API must show
+ * on the page, so the stores live on globalThis.
+ */
+function sharedData(): SharedData {
+  const holder = globalThis as { [GLOBAL_KEY]?: SharedData };
+  return (holder[GLOBAL_KEY] ??= { auditLog: createMemoryAuditLog(), tickets: createMemoryTicketStore() });
+}
+
+let local: MatrixOverrides | undefined;
+
+/**
+ * Everything else is built per bundle. It must be: auth-kit checks errors with `instanceof`, and
+ * each bundle has its own copy of auth-kit, so a gateway shared from the proxy's bundle would throw
+ * an UnauthenticatedError the page's copy doesn't recognize (a 500 instead of a 401).
+ */
 function build(fixture: MatrixFixture): MatrixOverrides {
   const byUsername = new Map(fixture.users.map((u) => [u.username, u]));
   const refuseEmail = async () => {
@@ -99,16 +126,12 @@ function build(fixture: MatrixFixture): MatrixOverrides {
     serverAuth: { jwks: fixture.jwks, cognito: scriptedGateway(byUsername) },
     peopleCognito: scriptedPeopleClient(fixture.users),
     mailer: { sendInvite: refuseEmail, ownerGranted: refuseEmail },
-    auditLog: createMemoryAuditLog(),
-    tickets: createMemoryTicketStore(),
+    ...sharedData(),
     marker: DEV_SIGNIN_MARKER,
   };
 }
 
 export function matrixOverrides(): MatrixOverrides | null {
   if (process.env.NODE_ENV !== 'development' || process.env.AUTH_KIT_MATRIX !== '1') return null;
-  // One set per server process: the proxy, pages, and route handlers are bundled separately and each
-  // evaluates this module, but they must share the same in-memory tickets and audit log.
-  const store = globalThis as { [GLOBAL_KEY]?: MatrixOverrides };
-  return (store[GLOBAL_KEY] ??= build(readFixture()));
+  return (local ??= build(readFixture()));
 }

@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["dom", "dom.iterable", "ES2023"],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "ES2023"
+    ],
     "allowJs": false,
     "skipLibCheck": true,
     "strict": true,
@@ -14,15 +18,37 @@
     "isolatedModules": true,
     "jsx": "react-jsx",
     "incremental": true,
-    "plugins": [{ "name": "next" }],
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
     "paths": {
       // Type checks see the "off" modules: the shape every build uses. Under `next dev`, withDevKit
       // (next.config.ts) points these aliases at the "on" modules instead. See lib/dev/README.md.
-      "@/dev": ["./lib/dev/off.tsx"],
-      "@/dev-matrix": ["./lib/dev/matrix.off.ts"],
-      "@/*": ["./*"]
+      "@/dev": [
+        "./lib/dev/off.tsx"
+      ],
+      "@/dev-matrix": [
+        "./lib/dev/matrix.off.ts"
+      ],
+      "@/*": [
+        "./*"
+      ]
     }
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", ".next/dev/types/**/*.ts"],
-  "exclude": ["node_modules", "amplify", ".amplify"]
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts",
+    ".next-matrix/types/**/*.ts",
+    ".next-matrix/dev/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "amplify",
+    ".amplify"
+  ]
 }

@@ -3,6 +3,9 @@ import type { NextConfig } from 'next';
 import { staticSecurityHeaders } from './lib/security-headers';
 
 const config: NextConfig = {
+  // The auth-matrix tests run their own `next dev` in .next-matrix, so a dev server you have open
+  // keeps its own output. Builds always use .next (what `auth-kit check-prod-build` scans).
+  distDir: process.env.SITE_NEXT_DIST_DIR === '.next-matrix' ? '.next-matrix' : '.next',
   poweredByHeader: false,
   reactStrictMode: true,
   async headers() {

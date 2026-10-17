@@ -1,8 +1,9 @@
 # Dependencies
 node_modules/
 
-# Next.js
+# Next.js (.next-matrix: the auth-matrix tests' own dev server output)
 .next/
+.next-matrix/
 out/
 next-env.d.ts
 *.tsbuildinfo
