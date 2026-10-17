@@ -5,11 +5,13 @@
  * Amplify keeps tokens in cookies page scripts can read (Amplify's browser code needs them), so an
  * injected script could take a session. The CSP is what stops one from running:
  *
- * - **Per request, from proxy.ts**: the full policy with a fresh nonce. `script-src` allows only
- *   scripts carrying that nonce (`'strict-dynamic'` lets them load their own chunks), so no inline
- *   script an attacker manages to inject can run. Next.js reads the nonce from the request's CSP
- *   header and puts it on its own scripts, which needs every page rendered per request (the root
- *   layout calls `connection()`). See node_modules/next/dist/docs/01-app/02-guides/content-security-policy.md.
+ * - **Per request, from proxy.ts**: the full policy with a fresh nonce (auth-kit's `nonceCspHeaders`
+ *   makes the nonce, 128 random bits, and puts the policy on the request and on every response).
+ *   `script-src` allows only scripts carrying that nonce (`'strict-dynamic'` lets them load their
+ *   own chunks), so no inline script an attacker manages to inject can run. Next.js reads the nonce
+ *   from the request's CSP header and puts it on its own scripts, which needs every page rendered
+ *   per request (the root layout calls `connection()`).
+ *   See node_modules/next/dist/docs/01-app/02-guides/content-security-policy.md.
  * - **On every response, from next.config.ts**: the static headers below plus a baseline CSP with
  *   the directives that need no nonce (framing, plugins, base URI, form targets). On responses the
  *   proxy handles, its full policy replaces the baseline (same header name; it contains every
@@ -20,17 +22,12 @@
  */
 
 export interface CspInput {
+  /** This request's nonce, from auth-kit's `nonceCspHeaders` (base64, at least 96 bits). */
   nonce: string;
   /** `next dev` adds what React's dev tooling needs ('unsafe-eval', inline styles) and drops the https upgrade. */
   dev: boolean;
   /** The pool's region: the browser calls Cognito directly. */
   region: string;
-}
-
-/** A fresh nonce: 128 random bits, base64. */
-export function newNonce(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(16));
-  return btoa(String.fromCharCode(...bytes));
 }
 
 function serialize(directives: Record<string, readonly string[]>): string {

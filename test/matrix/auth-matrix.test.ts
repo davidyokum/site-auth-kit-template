@@ -218,6 +218,13 @@ describe('what the matrix rows can’t express', () => {
     const scripts = html.match(/<script\b[^>]*>/g) ?? [];
     expect(scripts.length).toBeGreaterThan(0);
     for (const tag of scripts) expect(tag).toContain(`nonce="${nonce}"`);
+
+    // The proxy's own answers carry the policy too, with a fresh nonce.
+    const refusal = await send('/app');
+    expect(refusal.status).toBe(307);
+    const refusalCsp = refusal.headers.get('content-security-policy') ?? '';
+    expect(refusalCsp).toMatch(/script-src [^;]*'nonce-[A-Za-z0-9+/=]+'/);
+    expect(refusalCsp).not.toContain(`'nonce-${nonce}'`);
   });
 
   it('"Sign in as…" is closed unless ALLOW_DEV_SIGNIN=1 (the matrix server sets 0)', async () => {

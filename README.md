@@ -76,7 +76,7 @@ Server actions aren't in the route manifest; `test/unit/actions.test.ts` covers 
 
 ## Security headers
 
-`proxy.ts` sends a per-request Content-Security-Policy: scripts only with that request's nonce (`'strict-dynamic'`, no `'unsafe-inline'`, no `'unsafe-eval'` outside `next dev`), no framing, no plugins, and network access only to this site, Cognito, and the breached-password check. Amplify's tokens live in cookies page scripts can read, so this policy is what keeps an injected script from running. It needs every page rendered per request, which the root layout does (`connection()`), and which private pages need anyway. `next.config.ts` adds HSTS, `nosniff`, `X-Frame-Options: DENY`, a strict referrer policy, COOP, a Permissions-Policy, and a nonce-free baseline CSP for anything the proxy doesn't handle. Details in `lib/security-headers.ts`.
+`proxy.ts` sends a per-request Content-Security-Policy through auth-kit's `nonceCspHeaders`, on every response it answers (sign-in redirects and refusals too): scripts only with that request's nonce (`'strict-dynamic'`, no `'unsafe-inline'`, no `'unsafe-eval'` outside `next dev`), no framing, no plugins, and network access only to this site, Cognito, and the breached-password check. Amplify's tokens live in cookies page scripts can read, so this policy is what keeps an injected script from running. It needs every page rendered per request, which the root layout does (`connection()`), and which private pages need anyway. `next.config.ts` adds HSTS, `nosniff`, `X-Frame-Options: DENY`, a strict referrer policy, COOP, a Permissions-Policy, and a nonce-free baseline CSP for anything the proxy doesn't handle. Details in `lib/security-headers.ts`.
 
 ## amplify_outputs.json
 
