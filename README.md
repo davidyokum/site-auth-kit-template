@@ -4,6 +4,8 @@ The starter site for David Yokum's websites: a small, real Next.js 16 (App Route
 
 > Pre-release, like auth-kit (`v0.1.1-alpha`). Not yet deployed anywhere: see [Verify on the first sandbox deploy](#verify-on-the-first-sandbox-deploy).
 
+Comments cite the login standard as "03 §2" (its rules) and "03 §1" (its tiers). The standard itself is kept privately; [auth-kit's README](https://github.com/davidyokum/auth-kit#how-the-standard-maps-to-the-code) maps every rule to the code that enforces it.
+
 ## What you get
 
 | Piece | Where |

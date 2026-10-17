@@ -3,7 +3,8 @@
 Rules for AI coding agents (and people) working on this site. It started from
 `site-auth-kit-template`: Next.js 16 (App Router) on AWS Amplify Gen 2, with sign-in and
 authorization from [auth-kit](https://github.com/davidyokum/auth-kit). auth-kit's README maps each
-rule of the login standard to the code that enforces it; this file says how to work inside it.
+rule of the login standard (cited in comments as "03 §2"; kept privately) to the code that
+enforces it; this file says how to work inside it.
 
 ## Site record
 
