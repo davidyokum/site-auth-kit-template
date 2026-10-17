@@ -6,6 +6,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { site } from '@/site.config';
 import { allowedIds, FAKE_ACCOUNT_IDS, FAKE_APP_IDS, unknownIds } from './support/identifiers';
 
 const ROOT = join(import.meta.dirname, '..', '..');
@@ -61,10 +62,20 @@ describe('the repo holds no secrets or real identifiers', () => {
     for (const p of personas) expect(p.email).toMatch(/\.test$/);
   });
 
-  it('carries no employer or government branding', () => {
-    // This file is skipped: it has to spell the patterns out.
-    const hits = text.filter((f) => f !== 'test/unit/hygiene.test.ts' && /\bosbm\b|\.nc\.gov\b|north carolina/i.test(read(f)));
+  it('carries no employer or government branding outside the family table', () => {
+    // Exempt by exact path, and only these: this file (it spells the patterns out); site.families.ts,
+    // whose table has to name each family a site can belong to, an employer included; and the unit
+    // test that checks that table's text word for word. Every other file is scanned, so a family's
+    // name can't spread from the table into pages, docs, or config.
+    const exempt = new Set(['test/unit/hygiene.test.ts', 'site.families.ts', 'test/unit/families.test.ts']);
+    for (const file of exempt) expect(text, `${file} is exempt but missing`).toContain(file);
+    const hits = text.filter((f) => !exempt.has(f) && /\bosbm\b|\.nc\.gov\b|north carolina/i.test(read(f)));
     expect(hits).toEqual([]);
+  });
+
+  it("ships as a personal site (family: 'personal' in site.config.ts)", () => {
+    expect(site.family).toBe('personal');
+    expect(read('site.config.ts')).toMatch(/^\s*family: 'personal' as SiteFamily,$/m);
   });
 });
 

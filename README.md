@@ -26,7 +26,7 @@ You need Node 22, the AWS CLI signed in to the account you'll deploy to, and a d
 1. **Make the repo.** On GitHub, **Use this template**, or:
    `gh repo create <you>/<site> --template davidyokum/site-auth-kit-template --private --clone`
 2. **Install:** `npm ci` (the lockfile pins auth-kit's release tarball by hash).
-3. **Name the site** in `site.config.ts`: name, project slug, owner, sender address (on your SES domain), invite domains, the alert recipients, and the local name and port (if you change those, match the `dev` and `start` scripts in `package.json`).
+3. **Name the site** in `site.config.ts`: name, family (who runs it; see [Email](#email)), project slug, owner, sender address (on your SES domain), help address (`email.replyTo`), invite domains, the alert recipients, and the local name and port (if you change those, match the `dev` and `start` scripts in `package.json`).
 4. **Say where it deploys** in `deploy.config.json`: the AWS CLI profile and the 12-digit account ID it must reach. Every AWS-touching script refuses until this is right. `amplifyAppId` stays `null` until the Amplify app exists (Deploy, step 2). The hygiene test allows these two IDs, the site's own, and still fails on any other account or app ID in the repo. (Account IDs aren't secrets, but keep a public repo's copy on the placeholder.)
 5. **Personas:** in `personas.json`, change the `.test` domain to your site's (for example `my-site.test`). Add one per app role if you have any.
 6. **Your sandbox backend:** `npm run sandbox`. It checks the account, then runs `npx ampx sandbox --profile <profile>`, which deploys your own throwaway copy of the backend and writes `amplify_outputs.json`. Leave it running while you work.
@@ -77,6 +77,23 @@ Server actions aren't in the route manifest; `test/unit/actions.test.ts` covers 
 ## Security headers
 
 `proxy.ts` sends a per-request Content-Security-Policy through auth-kit's `nonceCspHeaders`, on every response it answers (sign-in redirects and refusals too): scripts only with that request's nonce (`'strict-dynamic'`, no `'unsafe-inline'`, no `'unsafe-eval'` outside `next dev`), no framing, no plugins, and network access only to this site, Cognito, and the breached-password check. Amplify's tokens live in cookies page scripts can read, so this policy is what keeps an injected script from running. It needs every page rendered per request, which the root layout does (`connection()`), and which private pages need anyway. `next.config.ts` adds HSTS, `nosniff`, `X-Frame-Options: DENY`, a strict referrer policy, COOP, a Permissions-Policy, and a nonce-free baseline CSP for anything the proxy doesn't handle. Details in `lib/security-headers.ts`.
+
+## Email
+
+All auth email goes through SES from `site.email.fromAddress`. Two settings in `site.config.ts` shape it:
+
+- **`family`**: who runs the site, one of the families in `site.families.ts`. The template ships `'personal'` (Yokum Lab). It sets the sender's display name (the site's name, plus the family's short name for the work families) and the footer's identity line ("Made by Yokum Lab."). The design work's per-family theme will hang off the same setting; there are no visuals yet.
+- **`email.replyTo`**: the family's help mailbox. It's the Reply-To on every auth email, so replies never go to a noreply address, and the footer ends "Help: {address}." Set it before real people get email.
+
+What each email gets:
+
+| Email | Sent by | Sender name | Reply-To | Footer |
+|---|---|---|---|---|
+| Sign-in and verification codes | Cognito (`amplify/auth/resource.ts`) | yes | yes | no |
+| Invites, owner-grant alerts | auth-kit's SES mailer (`lib/email.ts`, `lib/admin.ts`) | yes | yes | yes |
+| Grant and removal alerts | `lib/alerts.ts` | yes | yes | yes |
+
+Cognito writes its own code emails, so they get no footer. Full control of their text needs Cognito's custom email sender trigger (later).
 
 ## amplify_outputs.json
 

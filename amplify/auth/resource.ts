@@ -18,12 +18,21 @@
 import { defineAuth } from '@aws-amplify/backend';
 import { standardAuthProps, type AuthStandardOptions } from 'auth-kit/amplify';
 import { site } from '../../site.config';
+import { senderDisplayName } from '../../site.families';
 
 export const authOptions = {
   project: site.project,
   owner: site.owner,
   tier: site.tier,
-  email: site.email,
+  // Cognito's own email (sign-in and verification codes) comes from the family's sender name
+  // (site.families.ts) with the help mailbox as Reply-To. Its text is Cognito's, so it has no family
+  // footer: full control of those messages needs Cognito's custom email sender trigger (later). The
+  // site's own email (invites, alerts) carries the footer (lib/email.ts).
+  email: {
+    fromAddress: site.email.fromAddress,
+    fromName: senderDisplayName(site),
+    ...(site.email.replyTo !== null && { replyTo: site.email.replyTo }),
+  },
   passkeys: site.passkeys,
   // App roles beyond superadmin/admin/editor/viewer live in site.config.ts (the app reads them too).
   appRoles: site.appRoles,
