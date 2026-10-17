@@ -23,7 +23,8 @@
     "preflight": "node scripts/preflight.mjs",
     "sandbox": "node scripts/preflight.mjs --exec ampx sandbox",
     "sandbox:delete": "node scripts/preflight.mjs --exec ampx sandbox delete",
-    "personas:seed": "node scripts/preflight.mjs --pass-account --exec auth-kit seed-personas"
+    "personas:seed": "node scripts/preflight.mjs --pass-account --exec auth-kit seed-personas",
+    "preview:password": "node scripts/preview-password.mjs"
   },
   "dependencies": {
     "@aws-amplify/adapter-nextjs": "^1.8.1",
