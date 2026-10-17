@@ -1,0 +1,46 @@
+/**
+ * The admin area's People and Activity actions (auth-kit/admin; primer §9). Server-only.
+ *
+ * Every action re-reads the acting person and the target from Cognito, runs the guardrails with a
+ * live owner count (grant only below your own role, nobody changes their own role, keep an owner),
+ * asks for a recent sign-in before a grant or a delete, and writes the audit intent before any
+ * Cognito call and the result after (auth-kit ADR 0010, 0011).
+ *
+ * Created on first use, not at import: building it needs the public origin (for invite links),
+ * which a production build doesn't have until it runs on its branch.
+ */
+import 'server-only';
+import { createPeopleActions, createSesInviteMailer, type PeopleActions } from 'auth-kit/admin';
+import { matrixOverrides } from '@/dev-matrix';
+import { site } from '@/site.config';
+import { alertOnPeopleChange } from './alerts';
+import { auditLog } from './audit-log';
+import { auth } from './auth';
+import { publicOrigin } from './origin';
+import { outputs } from './outputs';
+
+let people: PeopleActions | undefined;
+
+export function peopleActions(): PeopleActions {
+  if (people) return people;
+  const matrix = matrixOverrides();
+  people = createPeopleActions({
+    auth,
+    auditLog: auditLog(),
+    // Everyday pools invite with an emailed code: no password, no `email_verified`, and the app's own
+    // email (Cognito's is suppressed). A Tier 3 admin pool uses inviteMode: 'temporary-password'.
+    mailer: matrix?.mailer ?? createSesInviteMailer({ from: `${site.email.fromName} <${site.email.fromAddress}>`, region: outputs.auth.aws_region }),
+    siteName: site.name,
+    signInUrl: `${publicOrigin()}/sign-in`,
+    inviteDomains: site.inviteDomains,
+    onChange: alertOnPeopleChange,
+    onError: (error, context) => console.error(`[admin] ${context}:`, error instanceof Error ? error.message : error),
+    ...(matrix && { cognito: matrix.peopleCognito }),
+  });
+  return people;
+}
+
+/** Where the admin UI sends someone whose sign-in is too old for a risky action (step-up). */
+export function stepUpHref(returnTo: string): string {
+  return `/sign-in?${new URLSearchParams({ next: returnTo, reauth: '1' }).toString()}`;
+}

@@ -1,0 +1,8 @@
+[
+  { "key": "superadmin", "email": "owner@example-site.test", "groups": ["superadmin"], "label": "Owner" },
+  { "key": "admin", "email": "admin@example-site.test", "groups": ["admin"], "label": "Admin" },
+  { "key": "editor", "email": "editor@example-site.test", "groups": ["editor"], "label": "Editor" },
+  { "key": "viewer", "email": "viewer@example-site.test", "groups": ["viewer"], "label": "Viewer" },
+  { "key": "member", "email": "member@example-site.test", "groups": [], "label": "Member" },
+  { "key": "member-2", "email": "member-2@example-site.test", "groups": [], "label": "Second member" }
+]

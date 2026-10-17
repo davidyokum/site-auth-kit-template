@@ -1,0 +1,52 @@
+{
+  "name": "site-auth-kit-template",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Starter Next.js + Amplify Gen 2 site wired to auth-kit (passkey-first sign-in, server-side checks, admin area, localhost kit)",
+  "license": "MIT",
+  "author": "David Yokum",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev": "next dev --hostname 127.0.0.1 --port 3000",
+    "build": "next build",
+    "start": "next start --hostname 127.0.0.1 --port 3000",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p amplify/tsconfig.json",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:matrix": "vitest run --config vitest.matrix.config.ts",
+    "check:prod-build": "auth-kit check-prod-build",
+    "check": "npm run typecheck && npm run lint && npm test && npm run build && npm run check:prod-build && npm run test:matrix",
+    "outputs:placeholder": "node scripts/use-placeholder-outputs.mjs",
+    "preflight": "node scripts/preflight.mjs",
+    "sandbox": "node scripts/preflight.mjs --exec ampx sandbox",
+    "sandbox:delete": "node scripts/preflight.mjs --exec ampx sandbox delete",
+    "personas:seed": "node scripts/preflight.mjs --pass-account --exec auth-kit seed-personas"
+  },
+  "dependencies": {
+    "@aws-amplify/adapter-nextjs": "^1.8.1",
+    "@aws-sdk/client-dynamodb": "^3.1152.0",
+    "@aws-sdk/lib-dynamodb": "^3.1152.0",
+    "auth-kit": "https://github.com/davidyokum/auth-kit/releases/download/v0.1.1-alpha/auth-kit-0.1.1-alpha.tgz",
+    "aws-amplify": "^6.22.2",
+    "next": "16.4.2",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "server-only": "^0.0.1"
+  },
+  "devDependencies": {
+    "@aws-amplify/backend": "^1.25.1",
+    "@aws-amplify/backend-cli": "^1.10.0",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "aws-cdk-lib": "^2.273.0",
+    "constructs": "^10.8.1",
+    "eslint": "^9.39.0",
+    "eslint-config-next": "16.4.2",
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.5"
+  }
+}
