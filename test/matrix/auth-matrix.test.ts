@@ -227,6 +227,14 @@ describe('what the matrix rows can’t express', () => {
     expect(refusalCsp).not.toContain(`'nonce-${nonce}'`);
   });
 
+  it('My account shows from the first paint: the authenticator gate follows the page’s guard (serverChecked)', async () => {
+    const response = await send('/account', { as: 'member' });
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toMatch(/data-auth-kit="totp-gate"[^>]*data-auth-kit-state="open"/);
+    expect(html).toMatch(/data-auth-kit-slot="content"(?![^>]*\bhidden)[^>]*>/);
+  });
+
   it('"Sign in as…" is closed unless ALLOW_DEV_SIGNIN=1 (the matrix server sets 0)', async () => {
     const response = await send('/api/dev/sign-in');
     expect(response.status).toBe(404);
