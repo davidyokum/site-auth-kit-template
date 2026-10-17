@@ -62,7 +62,10 @@ describe('the repo holds no secrets or real identifiers', () => {
     for (const p of personas) expect(p.email).toMatch(/\.test$/);
   });
 
-  it('carries no employer or government branding outside the family table', () => {
+  // A personal site (the template ships as one) carries no employer or government branding. A site in
+  // a work family (site.config.ts `family: 'osbm'` or `'unc'`) names its employer by design, so the
+  // check applies to personal sites only; otherwise every site started from here would fail it.
+  it.runIf(site.family === 'personal')('a personal site carries no employer or government branding outside the family table', () => {
     // Exempt by exact path, and only these: this file (it spells the patterns out); site.families.ts,
     // whose table has to name each family a site can belong to, an employer included; and the unit
     // test that checks that table's text word for word. Every other file is scanned, so a family's
@@ -73,9 +76,9 @@ describe('the repo holds no secrets or real identifiers', () => {
     expect(hits).toEqual([]);
   });
 
-  it("ships as a personal site (family: 'personal' in site.config.ts)", () => {
-    expect(site.family).toBe('personal');
-    expect(read('site.config.ts')).toMatch(/^\s*family: 'personal' as SiteFamily,$/m);
+  it('names one of the known families in site.config.ts', () => {
+    expect(['osbm', 'unc', 'personal']).toContain(site.family);
+    expect(read('site.config.ts')).toMatch(/^\s*family: '(osbm|unc|personal)' as SiteFamily,$/m);
   });
 });
 
