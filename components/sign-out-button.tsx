@@ -18,6 +18,8 @@ export function SignOutButton() {
           setState('busy');
           try {
             await signOutEverywhere();
+            // A full page load, not a client navigation, so no server-rendered page from the old session survives.
+            // eslint-disable-next-line @next/next/no-location-assign-relative-destination
             window.location.assign('/');
           } catch {
             setState('failed');

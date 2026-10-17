@@ -22,9 +22,11 @@ const config: NextConfig = {
  * - `@/dev-matrix` likewise: lib/dev/matrix.on.ts (the auth-matrix test server) or matrix.off.ts.
  * `npm run check:prod-build` proves a build contains none of it.
  */
-export default (phase: string) =>
+const nextConfig = (phase: string) =>
   withDevKit(phase, withDevKit(phase, config), {
     alias: '@/dev-matrix',
     on: './lib/dev/matrix.on.ts',
     off: './lib/dev/matrix.off.ts',
   });
+
+export default nextConfig;

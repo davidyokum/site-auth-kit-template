@@ -7,7 +7,6 @@ import { TICKET_LIMITS } from './types';
 export type TicketInputResult = { ok: true; title: string; body: string } | { ok: false; field: 'title' | 'body'; error: string };
 
 // Control characters other than tab and newlines.
-// eslint-disable-next-line no-control-regex -- control characters are what's being refused
 const CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/;
 
 export function validateTicketInput(input: { title?: unknown; body?: unknown }): TicketInputResult {

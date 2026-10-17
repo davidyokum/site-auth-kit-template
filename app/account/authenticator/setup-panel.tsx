@@ -6,6 +6,12 @@
 import { AuthenticatorSetup } from 'auth-kit/client';
 
 export function AuthenticatorSetupPanel({ issuer }: { issuer: string }) {
-  // A full page load, so the server sees the session with its new authenticator.
-  return <AuthenticatorSetup issuer={issuer} onDone={() => window.location.assign('/app')} />;
+  return (
+    <AuthenticatorSetup
+      issuer={issuer}
+      // A full page load, not a client navigation: the server must re-read the session with its new authenticator.
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+      onDone={() => window.location.assign('/app')}
+    />
+  );
 }
