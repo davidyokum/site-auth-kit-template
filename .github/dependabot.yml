@@ -1,0 +1,17 @@
+# Weekly update PRs for npm packages and the pinned GitHub Actions. Dependabot can't update auth-kit:
+# it's installed from a release tarball URL. Bump that by hand (README, "Upgrading auth-kit").
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      aws-sdk:
+        patterns: ['@aws-sdk/*']
+      amplify:
+        patterns: ['@aws-amplify/*', 'aws-amplify', 'aws-cdk-lib', 'constructs']
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

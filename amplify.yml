@@ -1,0 +1,37 @@
+# Amplify Hosting build spec (Gen 2, Next.js SSR). Each branch's pipeline deploys its own backend
+# (pool, tables, compute role), writes amplify_outputs.json, then builds the site against it.
+version: 1
+backend:
+  phases:
+    preBuild:
+      commands:
+        - nvm install 22 && nvm use 22
+    build:
+      commands:
+        - npm ci
+        - npx ampx pipeline-deploy --branch $AWS_BRANCH --app-id $AWS_APP_ID
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - nvm use 22
+    build:
+      commands:
+        # Amplify passes build variables to the server at runtime only if the build writes them
+        # out. AWS_BRANCH drives the PREVIEW ribbon (none on main); AWS_BRANCH + AWS_APP_ID give the
+        # default origin for the origin check and invite links; APP_ORIGIN (set it per branch in
+        # the console) overrides that for a custom domain. Never write secrets here.
+        - echo "AWS_BRANCH=$AWS_BRANCH" >> .env.production
+        - echo "AWS_APP_ID=$AWS_APP_ID" >> .env.production
+        - if [ -n "$APP_ORIGIN" ]; then echo "APP_ORIGIN=$APP_ORIGIN" >> .env.production; fi
+        - npm run build
+        # The localhost kit must not be in a deployed build: fail the deploy if it is.
+        - npx auth-kit check-prod-build
+  artifacts:
+    baseDirectory: .next
+    files:
+      - '**/*'
+  cache:
+    paths:
+      - .next/cache/**/*
+      - node_modules/**/*
