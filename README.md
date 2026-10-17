@@ -2,7 +2,7 @@
 
 The starter site for David Yokum's websites: a small, real Next.js 16 (App Router) site on AWS Amplify Gen 2, wired to [auth-kit](https://github.com/davidyokum/auth-kit). It meets the login standard out of the box (passkey-first sign-in, server-side checks on every route, an admin area with an append-only log, and a localhost kit for signing in as test personas) and the tests fail if a change breaks it.
 
-> Pre-release, like auth-kit (`v0.1.2-alpha`). Not yet deployed anywhere: see [Verify on the first sandbox deploy](#verify-on-the-first-sandbox-deploy).
+> Pre-release, like auth-kit (`v0.1.3-alpha`). Deployed once, as a private demo (2026-10-17): see [Verified on a live deploy, and what's left](#verified-on-a-live-deploy-and-whats-left).
 
 Comments cite the login standard as "03 §2" (its rules) and "03 §1" (its tiers). The standard itself is kept privately; [auth-kit's README](https://github.com/davidyokum/auth-kit#how-the-standard-maps-to-the-code) maps every rule to the code that enforces it.
 
@@ -10,11 +10,11 @@ Comments cite the login standard as "03 §2" (its rules) and "03 §1" (its tiers
 
 | Piece | Where |
 |---|---|
-| The user pool: invite-only, passkey first, then password + authenticator code, then emailed code; MFA optional with TOTP required of password users; 60-minute tokens, 30-day refresh (Tier 2); deletion protection; WAF rate rule; groups superadmin (Owner), admin, editor, viewer | `amplify/auth/resource.ts`, `amplify/backend.ts` (auth-kit's preset) |
+| The user pool: invite-only, passkey first, then password + authenticator code, then emailed code; MFA optional with TOTP required of password users; 60-minute tokens, 30-day refresh (Tier 2); deletion protection; WAF rate rules (the sign-in rule counts first, the overall rule blocks); groups superadmin (Owner), admin, editor, viewer | `amplify/auth/resource.ts`, `amplify/backend.ts` (auth-kit's preset) |
 | Default-deny proxy that verifies tokens, refreshes sessions server-side, and sets a per-request nonce CSP | `proxy.ts`, `lib/security-headers.ts` |
 | A guard on every page, layout, route handler, and server action; one capability map | `lib/auth.ts`, `lib/capabilities.ts` |
 | Pages: `/` (public), `/sign-in`, `/account` (My account), `/account/authenticator`, `/app` (members' tickets; another member's ticket is a 404), `/admin` (People and Activity, owners and admins only); `/api/tickets` (sample API) | `app/` |
-| Append-only audit log, grant/removal alerts, SSR compute role with exact permissions | `lib/audit-log.ts`, `lib/alerts.ts`, `amplify/compute-role.ts` |
+| Append-only audit log, grant/removal alerts, invite expiry (an hourly schedule disables invites unused for 7 days), SSR compute role with exact permissions | `lib/audit-log.ts`, `lib/alerts.ts`, `amplify/backend.ts`, `amplify/compute-role.ts` |
 | Localhost kit: personas, "Sign in as…", environment ribbon, `[DEV]` tab title, dev code kept out of builds | `personas.json`, `lib/dev/`, `app/api/dev/sign-in/route.dev.ts` |
 | Account-assert preflight, branch passwords for previews | `scripts/preflight.mjs`, `scripts/preview-password.mjs` |
 | Tests: the auth matrix (every route × 11 personas, with and without the proxy), unit and static checks, production-build checks, CI | `test/`, `.github/workflows/ci.yml` |
@@ -47,7 +47,9 @@ Personal projects deploy to the personal AWS account by default; whatever the ac
 4. **Preview branches behind a password** (Tier 1): `npm run preview:password -- --app-id <app-id> --auto-branches` makes branches Amplify creates start behind a password; `-- --branch <name>` does one existing branch. It asks for the password without echoing it; keep it in your password manager.
 5. **A custom domain, later:** add it in the console, set `APP_ORIGIN` for that branch (*Environment variables*), and then turn on passkeys: `passkeys: { relyingPartyId: '<that domain>' }` in `site.config.ts`. Passkeys wait for the final domain because changing it later forces everyone to register again.
 6. **The first owner** (once per branch pool; auth-kit doesn't bootstrap the first admin yet): create yourself the way the People page invites people, with no password and no welcome email, then sign in with an emailed code and save a passkey or set a password and authenticator. After `npm run preflight`: `aws cognito-idp admin-create-user --user-pool-id <pool> --username <your email> --user-attributes Name=email,Value=<your email> --message-action SUPPRESS --profile <profile>`, then `aws cognito-idp admin-add-user-to-group --user-pool-id <pool> --username <your email> --group-name superadmin --profile <profile>`. Everyone else comes in from the People page.
-7. **More than one site in an account and Region?** Share one WAF web ACL instead of one per pool (about $7/month each): see the `waf: { webAclArn }` comment in `amplify/auth/resource.ts`.
+7. **The WAF sign-in rule counts first.** The pool's web ACL has two per-IP rules: sign-in attempts, which only counts at first, and all requests, which blocks from day one. After about a week, read the sign-in rule's sampled requests (auth-kit README, "Count first, then block the sign-in rule") and set `signInRule: 'block'` in `amplify/auth/resource.ts`.
+8. **More than one site in an account and Region?** Share one WAF web ACL instead of one per pool (about $7/month each): see the `waf: { webAclArn }` comment in `amplify/auth/resource.ts`. The shared ACL's rule modes are set where it's created.
+9. **Invite expiry runs by itself.** `amplify/backend.ts` deploys auth-kit's `InviteExpirySweep` with every branch: hourly, it disables invites still unused after 7 days, and the Activity page shows each as "Scheduled job". Give it an `alarmTopic` (an SNS topic someone reads) so a failed run reaches a person.
 
 Merging to `main` deploys the live site. Once it's live, work on branches.
 
@@ -113,17 +115,21 @@ npm run check
 
 Commit the lockfile: it pins the tarball's sha512, so `npm ci` refuses a tarball that changed. Only auth-kit's entries should change; if `npm i` also drops bundled (`inBundle`) entries elsewhere, put them back, or `npm ci` fails on a clean checkout. Read auth-kit's CHANGELOG for breaking changes first.
 
-## Verify on the first sandbox deploy
+## Verified on a live deploy, and what's left
 
-Checked by synthesis and tests, not yet against a live deploy:
+A private demo made from this template (auth-kit 0.1.1-alpha, an Amplify branch on the personal account) checked these on 2026-10-17:
 
-- The backend deploys as a sandbox (preset, audit log, tickets table, compute role) and `npm run personas:seed` seeds every persona.
-- "Sign in as…" works for each persona, and each sees what the matrix says it should.
-- The compute role's trust policy (`amplify.amazonaws.com`) is what Amplify Hosting accepts, and the People page works under it.
-- The CSP lets Amplify's sign-in calls through: emailed code, password + TOTP, and (on the final domain) passkeys; no violations in the browser console.
-- Behind Amplify Hosting, `APP_ORIGIN` / the derived branch origin matches the browser's `Origin`, so POSTs pass the origin check.
-- Auth email (codes, invites, alerts) shows the family's sender name, and replies reach `email.replyTo`.
-- auth-kit's own list: [Verify on the first sandbox deploy](https://github.com/davidyokum/auth-kit#verify-on-the-first-sandbox-deploy).
+- The backend deploys on an Amplify branch: preset, audit log, tickets table, and compute role. The pool came up with the standard's settings (auth-kit README, "Verified on a live pool").
+- Amplify accepts the compute role (`amplify.amazonaws.com` trust), and IAM's policy simulator allows the People page's Cognito calls on that pool only, `ses:SendEmail` on the site's identity only, and on the audit log `PutItem` and `Query` only.
+- `/sign-in` renders with no console errors or CSP violations. Every response carries the nonce CSP, HSTS, and the other headers. Pages redirect to `https://…/sign-in?next=…` and `/api/tickets` answers 401. `/api/dev/sign-in` answers 404 and `check-prod-build` passes in the build. Forged tokens get 401 `invalid_token`.
+
+Still to check (each needs a real person, or a deploy the owner approves):
+
+- A sandbox with `npm run personas:seed`, and "Sign in as…" for each persona.
+- A real sign-in: emailed code, password + TOTP, and passkeys (on the final domain), all through the CSP. Also the People and Activity pages under the compute role.
+- The origin check for POSTs behind Amplify Hosting: the derived branch origin, or `APP_ORIGIN`, must match the browser's `Origin`. An anonymous POST can't test it, because auth runs first.
+- Since that deploy: the family's sender name and Reply-To on each email, the invite-expiry schedule (a real invite disabled after 7 days, with its audit rows), and the WAF rules' modes.
+- auth-kit's own list: [Verified on a live pool, and what's left](https://github.com/davidyokum/auth-kit#verified-on-a-live-pool-and-whats-left).
 
 ## License and provenance
 
