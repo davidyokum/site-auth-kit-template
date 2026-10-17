@@ -87,10 +87,12 @@ describe('every page, layout, route, and action checks on the server', () => {
     }
   });
 
-  it('routes that change data check the origin', () => {
+  it('routes that change data check the origin against the configured one (lib/origin.ts)', () => {
     for (const route of routes) {
       for (const handler of source(route).split(/export const (?=POST|PUT|PATCH|DELETE)/).slice(1)) {
-        expect(handler, `${route} changes data without assertSameOrigin`).toMatch(/assertSameOrigin\(/);
+        expect(handler, `${route} changes data without assertSameOrigin(request, { expectedOrigin: expectedOrigin() })`).toMatch(
+          /assertSameOrigin\(\s*request\s*,\s*\{\s*expectedOrigin:\s*expectedOrigin\(\)\s*\}\s*\)/,
+        );
       }
     }
   });

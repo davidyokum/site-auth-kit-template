@@ -2,10 +2,12 @@
  * The site's public origin, from configuration, never from request headers.
  *
  * - `expectedOrigin()` is what state-changing route handlers compare `Origin` with
- *   (`assertSameOrigin`). It's always set from configuration: behind Amplify Hosting's CDN the
- *   origin rebuilt from `request.url` may not match the browser's scheme, and under `next dev`
- *   Next 16 rewrites `request.url` to `http://localhost:<port>` whatever the Host, so a POST from
- *   http://app.localhost:3000 would never match it.
+ *   (`assertSameOrigin(request, { expectedOrigin: expectedOrigin() })`, a unit test checks). auth-kit
+ *   asks for it in every environment (0.1.2, #8), and it's set from configuration in each: behind
+ *   Amplify Hosting's CDN the origin rebuilt from `request.url` may not match the browser's scheme,
+ *   and under `next dev` Next 16 rewrites `request.url` to `http://localhost:<port>` whatever the
+ *   Host. (auth-kit now also accepts the browser's loopback origin under `next dev`, but a
+ *   configured origin wins, so this one is what's compared.)
  * - `publicOrigin()` builds absolute links (the sign-in URL in invite emails).
  *
  * Production reads `APP_ORIGIN` (set it per branch in Amplify for a custom domain), else the
@@ -54,8 +56,9 @@ function configuredOrigin(env: NodeJS.ProcessEnv): string | undefined {
 
 /**
  * The origin `assertSameOrigin` expects. Undefined only in a production build with neither
- * APP_ORIGIN nor the Amplify branch variables, where auth-kit falls back to `request.url`'s origin
- * (and, if that doesn't match, refuses: it fails closed).
+ * APP_ORIGIN nor the Amplify branch variables (a bare `next start`; on Amplify, amplify.yml always
+ * writes the branch variables), where auth-kit falls back to `request.url`'s origin and refuses
+ * anything else: it fails closed.
  */
 export function expectedOrigin(env: NodeJS.ProcessEnv = process.env): string | undefined {
   return configuredOrigin(env);

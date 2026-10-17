@@ -172,7 +172,7 @@ describe('what the matrix rows can’t express', () => {
     expect(await ids('admin')).toContain(memberTicketId);
   });
 
-  it('a state change from another site is refused (403 origin_mismatch)', async () => {
+  it('a state change from another origin is refused (403 origin_mismatch)', async () => {
     const response = await send('/api/tickets', {
       as: 'member',
       method: 'POST',
@@ -181,6 +181,15 @@ describe('what the matrix rows can’t express', () => {
     });
     expect(response.status).toBe(403);
     expect(((await response.json()) as { error: string }).error).toBe('origin_mismatch');
+
+    // Only the configured origin counts (lib/origin.ts), not request.url's (next dev says localhost).
+    const localhost = await send('/api/tickets', {
+      as: 'member',
+      method: 'POST',
+      headers: { origin: baseUrl.replace('127.0.0.1', 'localhost'), 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'Wrong origin' }),
+    });
+    expect(localhost.status).toBe(403);
   });
 
   it('input is validated on the server (415 for non-JSON, 400 for a bad title)', async () => {
