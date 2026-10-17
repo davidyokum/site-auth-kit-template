@@ -59,8 +59,8 @@ Merging to `main` deploys the live site. Once it's live, work on branches.
 |---|---|
 | `npm run typecheck` | The app and `amplify/` type-check (with the dev aliases resolved to their production modules) |
 | `npm run lint` | Next's rules, no `dangerouslySetInnerHTML`, no dev or test imports from code that ships; zero warnings |
-| `npm test` | Unit and static checks: a guard on every page, layout, route handler, and server action; origin checks on data-changing routes; `requireRecordAccess` on record routes; the CSP; the capability map; the preflight; the compute role's exact IAM permissions (CDK synthesis); no secrets, real pool IDs, or account and app IDs other than the site's own (`deploy.config.json`) in the repo; tests can't reach AWS |
-| `npm run build` + `npm run check:prod-build` | A production build with no dev sign-in code and no `/api/dev/sign-in` route |
+| `npm test` | Unit and static checks: a guard on every page, layout, route handler, and server action; origin checks (against the configured origin) on data-changing routes; `requireRecordAccess` on record routes; the CSP and the proxy's CSP hook; the error page's "couldn't check"; the capability map; the family's email text, sender, Reply-To, and footer; the preflight; the compute role's exact IAM permissions (CDK synthesis); no secrets, real pool IDs, or account and app IDs other than the site's own (`deploy.config.json`) in the repo; tests can't reach AWS |
+| `npm run build` + `npm run check:prod-build` | A production build with no dev sign-in code, no matrix server code, and no `/api/dev/sign-in` route |
 | `npx auth-kit check-dev-route` (CI) | The running production server answers forged requests to the dev route with 404 |
 | `npm run test:matrix` | The auth matrix, below |
 
@@ -70,7 +70,7 @@ Merging to `main` deploys the live site. Once it's live, work on branches.
 
 - **Routes:** `/`, `/sign-in`, `/account`, `/account/authenticator`, `/app`, `/app/tickets/:id`, `/admin`, `/admin/people`, `/admin/activity`, `GET` and `POST /api/tickets`, `GET /api/tickets/:id`.
 - **Personas:** anonymous, member, a second member, viewer, editor, admin, owner, and four lifecycle cases: a password user without an authenticator (sent to setup, 403 from APIs), a demoted admin (the token still says admin; admin pages re-read live and refuse), a disabled admin and a signed-out-everywhere session (Cognito refuses their tokens, so every check fails).
-- **Also checked:** sign-in redirects carry a safe return path; lists are filtered on the server; a cross-site POST gets 403; bad input gets 400/415; a forged token is refused; private responses are `no-store`; every script tag carries the request's CSP nonce; "Sign in as…" is closed without `ALLOW_DEV_SIGNIN=1`.
+- **Also checked:** sign-in redirects carry a safe return path; lists are filtered on the server; a POST from any origin but the configured one gets 403; bad input gets 400/415; a forged token is refused; private responses are `no-store`; every script tag carries the request's CSP nonce, and the proxy's redirects carry a fresh one; My account shows from the first paint (the authenticator gate follows the page's guard); "Sign in as…" is closed without `ALLOW_DEV_SIGNIN=1`.
 
 Server actions aren't in the route manifest; `test/unit/actions.test.ts` covers them.
 
@@ -111,7 +111,7 @@ gh release download vX.Y.Z --repo davidyokum/auth-kit --pattern '*.tgz' && gh at
 npm run check
 ```
 
-Commit the lockfile: it pins the tarball's sha512, so `npm ci` refuses a tarball that changed. Read auth-kit's CHANGELOG for breaking changes first.
+Commit the lockfile: it pins the tarball's sha512, so `npm ci` refuses a tarball that changed. Only auth-kit's entries should change; if `npm i` also drops bundled (`inBundle`) entries elsewhere, put them back, or `npm ci` fails on a clean checkout. Read auth-kit's CHANGELOG for breaking changes first.
 
 ## Verify on the first sandbox deploy
 
@@ -122,6 +122,7 @@ Checked by synthesis and tests, not yet against a live deploy:
 - The compute role's trust policy (`amplify.amazonaws.com`) is what Amplify Hosting accepts, and the People page works under it.
 - The CSP lets Amplify's sign-in calls through: emailed code, password + TOTP, and (on the final domain) passkeys; no violations in the browser console.
 - Behind Amplify Hosting, `APP_ORIGIN` / the derived branch origin matches the browser's `Origin`, so POSTs pass the origin check.
+- Auth email (codes, invites, alerts) shows the family's sender name, and replies reach `email.replyTo`.
 - auth-kit's own list: [Verify on the first sandbox deploy](https://github.com/davidyokum/auth-kit#verify-on-the-first-sandbox-deploy).
 
 ## License and provenance
