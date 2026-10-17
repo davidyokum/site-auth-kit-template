@@ -72,7 +72,7 @@ npm run personas:seed    # seed personas into the sandbox (account-checked)
 - `site.config.ts` the site's identity, including its family; `deploy.config.json` where it deploys
 - `site.families.ts` the family table: sender display name and email footer text (themes later);
   the only file allowed to name an employer (with its unit test)
-- `amplify/` the backend: auth preset, audit log, tickets table, SSR compute role
+- `amplify/` the backend: auth preset (WAF rule modes in `auth/resource.ts`), audit log, invite-expiry schedule, tickets table, SSR compute role
 - `proxy.ts` default-deny proxy, token checks, session refresh, per-request CSP
 - `lib/auth.ts` `auth` and `pages` guards; `lib/capabilities.ts` the one capability map
 - `lib/admin.ts`, `lib/audit-log.ts`, `lib/alerts.ts` the admin area's actions, log, and alerts;

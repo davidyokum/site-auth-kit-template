@@ -37,11 +37,20 @@ export const authOptions = {
   // App roles beyond superadmin/admin/editor/viewer live in site.config.ts (the app reads them too).
   appRoles: site.appRoles,
 
-  // ---- Rate limiting (auth-kit ADR 0004, 0013) ----------------------------------------------
-  // Default: the preset creates a web ACL for this pool (about $7/month). Once you run more than
-  // one site in an AWS account and Region, share ONE web ACL instead: deploy it once with
-  // `createSharedAuthWebAcl` from 'auth-kit/amplify' (a small CDK app of its own; see auth-kit's
-  // README, "WAF: one web ACL for all your sites"), then point every site at it:
+  // ---- Rate limiting (auth-kit ADR 0004, 0013, 0017) ----------------------------------------
+  // Default: the preset creates a web ACL for this pool (about $7/month) with two per-IP rules.
+  // Each rule has its own mode. The sign-in rule (100 InitiateAuth/RespondToAuthChallenge per IP per
+  // 5 minutes) starts in count mode: its header match is verified, but read about a week of its
+  // counts first (auth-kit README, "Count first, then block the sign-in rule"), then set
+  // signInRule: 'block'. The overall rule (1000 requests) blocks from day one, so the pool always has
+  // a limit. These are the defaults, written out so the switch is one word:
+  waf: { signInRule: 'count', overallRule: 'block' },
+  //
+  // Once you run more than one site in an AWS account and Region, share ONE web ACL instead: deploy
+  // it once with `createSharedAuthWebAcl` from 'auth-kit/amplify' (a small CDK app of its own; see
+  // auth-kit's README, "WAF: one web ACL for all your sites"), then point every site at it. The
+  // shared ACL's rule modes are set in that app, not here
+  // (`createSharedAuthWebAcl(stack, 'SharedAuthWebAcl', { waf: { signInRule: 'block' } })`):
   //
   // waf: { webAclArn: 'arn:aws:wafv2:<region>:<account-id>:regional/webacl/auth-kit-shared-user-pools/<id>' },
   //

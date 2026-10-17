@@ -5,7 +5,9 @@
 import { App, Stack } from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { UserPool } from 'aws-cdk-lib/aws-cognito';
-import { AuditLogTable } from 'auth-kit/admin/cdk';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { AuditLogTable, InviteExpirySweep } from 'auth-kit/admin/cdk';
 import { describe, expect, it } from 'vitest';
 import { SsrComputeRole } from '@/amplify/compute-role';
 import { TicketsTable } from '@/amplify/data/tickets-table';
@@ -85,5 +87,37 @@ describe('the SSR compute role', () => {
 
   it('grants no wildcard actions', () => {
     for (const s of allStatements(template)) for (const a of actionsOf(s)) expect(a).not.toMatch(/\*/);
+  });
+});
+
+describe('the invite-expiry sweep (auth-kit ADR 0019)', () => {
+  const ROOT = join(import.meta.dirname, '..', '..');
+
+  it('amplify/backend.ts schedules it for this pool, writing to the audit log', () => {
+    const backend = readFileSync(join(ROOT, 'amplify', 'backend.ts'), 'utf8');
+    expect(backend).toMatch(/new InviteExpirySweep\(data, 'InviteExpiry', \{\s*userPool: backend\.auth\.resources\.userPool,\s*auditLog,/);
+  });
+
+  it('synthesizes from the installed auth-kit: an hourly schedule invoking a function with only the calls it makes', () => {
+    const app = new App();
+    const stack = new Stack(app, 'Site', { env: { account: '111122223333', region: 'us-east-1' } });
+    new InviteExpirySweep(stack, 'InviteExpiry', { userPool: new UserPool(stack, 'Pool'), auditLog: new AuditLogTable(stack, 'AuditLog') });
+    const template = Template.fromStack(stack);
+    template.hasResourceProperties('AWS::Scheduler::Schedule', { ScheduleExpression: 'rate(1 hour)', State: 'ENABLED' });
+    // The function's code is the bundle inside the release tarball (node_modules/auth-kit/dist/lambda).
+    template.hasResourceProperties('AWS::Lambda::Function', { Runtime: 'nodejs22.x', Handler: 'index.handler' });
+    const actions = new Set(allStatements(template).flatMap(actionsOf));
+    expect(actions).toEqual(
+      new Set([
+        'cognito-idp:ListUsers',
+        'cognito-idp:AdminListGroupsForUser',
+        'cognito-idp:AdminDisableUser',
+        'cognito-idp:AdminRemoveUserFromGroup',
+        'dynamodb:PutItem',
+        'logs:CreateLogStream',
+        'logs:PutLogEvents',
+        'lambda:InvokeFunction',
+      ]),
+    );
   });
 });

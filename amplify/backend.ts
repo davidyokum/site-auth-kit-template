@@ -3,7 +3,7 @@
  * `npm run sandbox` for your own throwaway copy (never deploy by hand, never edit in the console).
  */
 import { defineBackend } from '@aws-amplify/backend';
-import { AuditLogTable } from 'auth-kit/admin/cdk';
+import { AuditLogTable, InviteExpirySweep } from 'auth-kit/admin/cdk';
 import { applyAuthStandard } from 'auth-kit/amplify';
 import { site } from '../site.config';
 import { auth, authOptions } from './auth/resource';
@@ -14,7 +14,8 @@ const backend = defineBackend({ auth });
 
 // What defineAuth can't express: admin-create-only, deletion protection, token lifetimes, the
 // 3-minute sign-in session, the password policy, passkeys counting as MFA, SES from a domain
-// identity, the WAF web ACL, and tags. Sandboxes get the sandbox variant automatically.
+// identity, the WAF web ACL (its per-rule modes are `waf` in amplify/auth/resource.ts), and tags.
+// Sandboxes get the sandbox variant automatically.
 applyAuthStandard(backend.auth, authOptions);
 
 const data = backend.createStack('site-data');
@@ -22,6 +23,24 @@ const data = backend.createStack('site-data');
 // The append-only audit log for people and content changes (auth-kit ADR 0010): deletion
 // protection, point-in-time recovery, and a resource policy that denies edits to every principal.
 const auditLog = new AuditLogTable(data, 'AuditLog');
+
+// Invites expire (03 §2: "An invite with no sign-in after 7 days is disabled"; auth-kit ADR 0019).
+// An invite is a live account until it's used, so EventBridge Scheduler runs auth-kit's sweep
+// hourly: a Lambda that disables every invite still unused after 7 days and removes its admin
+// roles, logging each to the audit log as "Scheduled job". Its role can only list people, read
+// their groups, disable, remove from groups (this pool), append to the audit log, and write its own
+// log. Sandboxes get it too (seeded personas are verified, so it never touches them).
+new InviteExpirySweep(data, 'InviteExpiry', {
+  userPool: backend.auth.resources.userPool,
+  auditLog,
+  // Site-specific:
+  // alarmTopic: an SNS topic someone reads (an email subscription needs one confirmation click):
+  //   alarms when a run fails (a due invite wasn't disabled, the pool outgrew maxPeople) or the
+  //   scheduler couldn't run it. Without it, failures show only in the function's metrics and log.
+  // inviteMode: 'temporary-password', // the Tier 3 admin pool (no emailed codes)
+  // schedule: 'rate(1 hour)', // the default; a rate from 10 minutes to 1 day, or a cron
+  // maxPeople: 5000, // the default; a bigger pool fails each run (and alarms) until raised
+});
 
 // The sample app's records. Replace with your own tables.
 const tickets = new TicketsTable(data, 'Tickets');
