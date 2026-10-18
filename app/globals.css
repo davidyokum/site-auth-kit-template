@@ -44,8 +44,9 @@ body {
 }
 
 /* The site's element styles stay off auth-kit's screens: auth-kit's defaults (below) have zero
- * specificity, so a bare `button` or `input` rule here would repaint the sign-in card's controls. */
-a:not([data-auth-kit-slot]) {
+ * specificity, so a bare `button` or `input` rule here would repaint the sign-in card's controls.
+ * `:where(:not(…))` adds no specificity, so classes such as .button-primary still win as before. */
+a:where(:not([data-auth-kit-slot])) {
   color: var(--accent);
 }
 
@@ -104,7 +105,7 @@ code {
 }
 
 .button,
-button:not([data-auth-kit-slot]) {
+button:where(:not([data-auth-kit-slot])) {
   font: inherit;
   font-weight: 600;
   border-radius: var(--radius);
@@ -116,7 +117,7 @@ button:not([data-auth-kit-slot]) {
 }
 
 .button-primary,
-button[type='submit']:not([data-auth-kit-slot]) {
+button[type='submit']:where(:not([data-auth-kit-slot])) {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-text);
@@ -187,9 +188,9 @@ a.button {
   font-weight: 600;
 }
 
-input:not([data-auth-kit-slot]),
-textarea:not([data-auth-kit-slot]),
-select:not([data-auth-kit-slot]) {
+input:where(:not([data-auth-kit-slot])),
+textarea:where(:not([data-auth-kit-slot])),
+select:where(:not([data-auth-kit-slot])) {
   font: inherit;
   color: var(--text);
   background: var(--bg);
