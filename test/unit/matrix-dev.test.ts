@@ -79,9 +79,11 @@ describe('@/dev-matrix', () => {
     );
     await expect(overrides.mailer.sendInvite({} as never)).rejects.toThrow(/sends no email/);
 
-    // The app's own stores: one per server process and key (lib/tickets/index.ts uses 'tickets').
-    const tickets = overrides.shared('tickets', () => ({ rows: [] as string[] }));
-    expect(overrides.shared('tickets', () => ({ rows: ['another'] }))).toBe(tickets);
+    // The app's own stores: one per server process and key (lib/projects/index.ts uses 'projects').
+    const projects = overrides.shared('projects', () => ({ rows: [] as string[] }));
+    expect(overrides.shared('projects', () => ({ rows: ['another'] }))).toBe(projects);
+    // Resource roles: one membership store per process, which lib/resources.ts uses under the matrix.
+    expect(typeof overrides.resources.getMembership).toBe('function');
     expect(overrides.marker).toEqual(expect.any(String));
   });
 });

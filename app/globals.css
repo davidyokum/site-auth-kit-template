@@ -262,7 +262,9 @@ select {
 .ak-unavailable {
   color: var(--danger);
 }
-.ak-button-danger {
+/* Also as a submit button, which the site's button[type='submit'] rule would otherwise paint blue. */
+.ak-button-danger,
+button.ak-button-danger {
   background: var(--danger);
   border-color: var(--danger);
   color: #fff;
@@ -340,6 +342,98 @@ select {
 }
 .ak-compare-roles[open] {
   overflow-x: auto;
+}
+/* auth-kit/resources/ui: "Who has access" on a project, and the resource roles summary. */
+.ak-access {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+.ak-access h2,
+.ak-access h3 {
+  margin: 0;
+}
+.ak-access-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.ak-access-member {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.ak-access-who {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+.ak-access-who small {
+  color: var(--muted);
+}
+.ak-access-change,
+.ak-access-remove {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px;
+}
+.ak-access-add,
+.ak-access-invite form {
+  display: grid;
+  gap: 12px;
+}
+.ak-access-invite > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.ak-role-chip {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 0.85em;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.ak-role-chip-manager {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.ak-role-chip-contributor {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+.ak-role-chip-reader {
+  color: var(--muted);
+}
+.ak-resource-roles {
+  display: grid;
+  gap: 8px;
+}
+.ak-resource-roles ul {
+  margin: 0;
+  padding-left: 1.25rem;
+  display: grid;
+  gap: 4px;
+}
+.ak-resource-matrix {
+  font-size: 0.9em;
+}
+.ak-resource-matrix caption {
+  text-align: left;
+  color: var(--muted);
+  padding-bottom: 4px;
+}
+.ak-resource-matrix-resource th {
+  font-style: italic;
 }
 
 

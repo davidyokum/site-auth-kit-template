@@ -45,7 +45,7 @@ export default async function setup(project: TestProject): Promise<() => Promise
   for (const [name, persona] of Object.entries(server.personas) as [MatrixPersonaKey, (typeof server.personas)[MatrixPersonaKey]][]) {
     const cookie = new Headers(persona.cookie.headers as HeadersInit).get('cookie');
     if (!cookie) throw new Error(`auth matrix: no session cookie for ${name}.`);
-    personas[name] = { username: persona.username, sub: persona.sub, accessToken: persona.accessToken, idToken: persona.idToken, cookie };
+    personas[name] = { username: persona.username, sub: persona.sub, email: persona.email, accessToken: persona.accessToken, idToken: persona.idToken, cookie };
   }
   project.provide('matrix', { baseUrl: server.baseUrl, clientId: server.clientId, personas });
 

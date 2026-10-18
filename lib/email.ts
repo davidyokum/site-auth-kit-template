@@ -1,6 +1,7 @@
 /**
  * The email the site sends itself: invites and the owner's alerts (auth-kit's SES mailer, used by
- * lib/admin.ts) and change alerts (lib/alerts.ts). All of it comes from the family's sender name
+ * lib/admin.ts), a project Manager's invite and the admins' alert about it (lib/resource-actions.ts),
+ * and change alerts (lib/alerts.ts). All of it comes from the family's sender name
  * (site.families.ts), carries the help mailbox as Reply-To, and ends with the family footer.
  *
  * Cognito's own email (sign-in and verification codes) gets the same sender name and Reply-To from
@@ -15,9 +16,11 @@ import {
   type OwnerAlertNotifier,
   type OwnerInviteWarningNotifier,
   type RenderedEmail,
+  type ResourceInviteNotifier,
   renderInviteEmail,
   renderOwnerInviteWarningEmail,
   renderOwnershipTransferEmail,
+  renderResourceInviteAlertEmail,
   renderSuperadminGrantEmail,
 } from 'auth-kit/admin';
 import { site as configuredSite } from '@/site.config';
@@ -74,14 +77,15 @@ export function withFooter(email: RenderedEmail, site: EmailSite = configuredSit
 }
 
 /**
- * Invites, the owner's alerts (someone was made Super admin; ownership moved), and the warning the
- * invite-expiry sweep sends about the owner's unused invite: auth-kit's SES mailer and its
- * templates, with this site's sender, Reply-To, and footer.
+ * Invites, the owner's alerts (someone was made Super admin; ownership moved), the warning the
+ * invite-expiry sweep sends about the owner's unused invite, and the admins' alert when a project's
+ * Manager invites someone new: auth-kit's SES mailer and its templates, with this site's sender,
+ * Reply-To, and footer.
  */
 export function createSiteMailer(
   options: { region: string; client?: SESv2Client },
   site: EmailSite = configuredSite,
-): InviteMailer & OwnerAlertNotifier & OwnerInviteWarningNotifier {
+): InviteMailer & OwnerAlertNotifier & OwnerInviteWarningNotifier & ResourceInviteNotifier {
   const replyTo = replyToAddresses(site);
   return createSesInviteMailer({
     from: senderMailbox(site),
@@ -92,5 +96,6 @@ export function createSiteMailer(
     renderSuperadminGrant: (alert) => withFooter(renderSuperadminGrantEmail(alert), site),
     renderOwnershipTransfer: (alert) => withFooter(renderOwnershipTransferEmail(alert), site),
     renderOwnerInviteWarning: (warning) => withFooter(renderOwnerInviteWarningEmail(warning), site),
+    renderResourceInvite: (alert) => withFooter(renderResourceInviteAlertEmail(alert), site),
   });
 }

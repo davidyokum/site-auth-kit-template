@@ -9,7 +9,9 @@
  *   `{ live: true }` re-reads), on this pool only;
  * - `ses:SendEmail` from the site's SES identity, for invites and owner alerts;
  * - the audit log: PutItem and Query only (`grantAppendAndQuery`);
- * - the tickets table: GetItem, PutItem, Query.
+ * - who has access to which project (auth-kit's `ResourceAccessTable`): GetItem, PutItem, DeleteItem,
+ *   and Query on that table only (`grantApp`);
+ * - the projects table: GetItem, BatchGetItem, PutItem, Query.
  *
  * Amplify doesn't attach it by itself: once per app, set it as the app's compute role (README,
  * "Deploy on Amplify"). The ARN is in amplify_outputs.json as `custom.computeRoleArn`.
@@ -17,14 +19,15 @@
 import { Stack, aws_iam as iam } from 'aws-cdk-lib';
 import type { IUserPool } from 'aws-cdk-lib/aws-cognito';
 import { peopleAdminPolicy } from 'auth-kit/admin';
-import type { AuditLogTable } from 'auth-kit/admin/cdk';
+import type { AuditLogTable, ResourceAccessTable } from 'auth-kit/admin/cdk';
 import { Construct } from 'constructs';
-import type { TicketsTable } from './data/tickets-table';
+import type { ProjectsTable } from './data/projects-table';
 
 export interface SsrComputeRoleProps {
   userPool: IUserPool;
   auditLog: AuditLogTable;
-  tickets: TicketsTable;
+  resourceAccess: ResourceAccessTable;
+  projects: ProjectsTable;
   /** The verified SES identity invites are sent from: a domain (`example.com`) or an address. */
   sesIdentity: string;
 }
@@ -46,6 +49,7 @@ export class SsrComputeRole extends Construct {
       new iam.Policy(this, 'PeopleAndEmail', { document: iam.PolicyDocument.fromJson(people) }),
     );
     props.auditLog.grantAppendAndQuery(this.role);
-    props.tickets.grantApp(this.role);
+    props.resourceAccess.grantApp(this.role);
+    props.projects.grantApp(this.role);
   }
 }

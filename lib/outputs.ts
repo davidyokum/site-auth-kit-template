@@ -10,8 +10,10 @@ import raw from '@/amplify_outputs.json';
 export interface SiteCustomOutputs {
   /** The append-only audit log (amplify/backend.ts, `AuditLogTable`). */
   auditLogTable?: string;
-  /** The sample app's tickets (amplify/data/tickets-table.ts). */
-  ticketsTable?: string;
+  /** The sample app's projects (amplify/data/projects-table.ts). */
+  projectsTable?: string;
+  /** Who has which role on which project (amplify/backend.ts, auth-kit's `ResourceAccessTable`). */
+  resourceAccessTable?: string;
   /** The SSR compute role to attach in Amplify Hosting (amplify/compute-role.ts). */
   computeRoleArn?: string;
 }

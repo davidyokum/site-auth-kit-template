@@ -1,6 +1,6 @@
-import { ROLE_MATRIX, ROLE_MATRIX_CAPABILITIES, STANDARD_CAPABILITIES, STANDARD_GROUPS } from 'auth-kit/server';
+import { RESOURCE_SITE_FLOOR, ROLE_MATRIX, ROLE_MATRIX_CAPABILITIES, STANDARD_CAPABILITIES, STANDARD_GROUPS } from 'auth-kit/server';
 import { describe, expect, it } from 'vitest';
-import { capabilities } from '@/lib/capabilities';
+import { type Capability, capabilities } from '@/lib/capabilities';
 import { site } from '@/site.config';
 
 const can = (groups: string[], capability: Parameters<typeof capabilities.can>[1]) => capabilities.can(groups, capability);
@@ -36,7 +36,6 @@ describe('the capability map (lib/capabilities.ts)', () => {
     for (const group of ['admin-content', 'admin-view']) {
       expect(can([group], 'people.manage')).toBe(false);
       expect(can([group], 'roles.manage')).toBe(false);
-      expect(can([group], 'tickets.read-all')).toBe(false);
     }
     expect(can(['admin-view'], 'content.edit')).toBe(false);
     expect(can(['admin-content-people'], 'people.manage')).toBe(true);
@@ -57,8 +56,10 @@ describe('the capability map (lib/capabilities.ts)', () => {
     expect(capabilities.groupsWith('owner.transfer')).toEqual(['owner']);
   });
 
-  it('lets staff (people admins and up) see every ticket, and nobody else', () => {
-    expect([...capabilities.groupsWith('tickets.read-all')]).toEqual(['owner', 'superadmin', 'admin-content-people']);
+  it('gives each site role its floor on every project (auth-kit RESOURCE_SITE_FLOOR): view-only sees, content edits, people admins manage access', () => {
+    expect(capabilities.groupsWith(RESOURCE_SITE_FLOOR.view as Capability)).toEqual(['owner', 'superadmin', 'admin-content-people', 'admin-content', 'admin-view']);
+    expect(capabilities.groupsWith(RESOURCE_SITE_FLOOR.edit as Capability)).toEqual(['owner', 'superadmin', 'admin-content-people', 'admin-content']);
+    expect(capabilities.groupsWith(RESOURCE_SITE_FLOOR['manage-access'] as Capability)).toEqual(['owner', 'superadmin', 'admin-content-people']);
   });
 });
 

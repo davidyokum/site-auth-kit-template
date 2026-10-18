@@ -64,16 +64,62 @@ const AUTHENTICATOR_PAGE: Expect = {
   revokedSession: 200,
 };
 
-/** A ticket page for the member's own ticket (requireUser + requireRecordAccess). */
-const OWN_RECORD_PAGE: Expect = {
+/**
+ * Project A's page (requireResourceRole 'view'). The matrix seeds it: `admin` creates it (and so is
+ * its Manager) and makes `member` a Contributor. Everyone else sees it only through a site role.
+ */
+const PROJECT_PAGE: Expect = {
   ...SIGNED_IN_PAGE,
-  otherMember: 404, // the standard's second-member check: not theirs, so "not found"
-  adminView: 404, // tickets are members' own items, not site content: view-only admins don't see them
-  adminContent: 404, // ...nor do content-only admins
-  admin: 200, // tickets.read-all
-  superadmin: 200,
-  owner: 200,
-  demotedAdmin: 200, // token still carries tickets.read-all until refresh; admin PAGES check live
+  otherMember: 404, // the standard's second-member check: no role on it, so "not found"
+  adminView: 200, // the site role is a floor on every project: Admin – view only sees it
+  adminContent: 200,
+  demotedAdmin: 200, // the token's groups give the floor until it's refreshed (≤ 60 min); edits check live
+};
+
+/** API routes any signed-in person may call. */
+const SIGNED_IN_API: Expect = {
+  anonymous: 401, member: 200, otherMember: 200, ...ADMINS(200),
+  noAuthenticator: 403, // mfa_enrollment_required
+  demotedAdmin: 200,
+  disabledAdmin: 401, // account_disabled
+  revokedSession: 401, // invalid_token
+};
+
+/** Seeing project A over the API: as the page, with API statuses. */
+const PROJECT_API: Expect = { ...SIGNED_IN_API, otherMember: 404 };
+
+/**
+ * Creating a project (POST /api/projects): site admins who manage people (people.manage, read live),
+ * since self-service creation is off (lib/resources.ts). A member, or an admin who can see but not
+ * share projects, is refused (403: there's no item to hide yet).
+ */
+const CREATE_PROJECT_API: Expect = {
+  ...SIGNED_IN_API,
+  member: 403, otherMember: 403, adminView: 403, adminContent: 403,
+  admin: 201, superadmin: 201, owner: 201,
+  demotedAdmin: 403, // read live: Cognito says member now
+};
+
+/**
+ * Editing project A (PATCH, requireResourceRole 'edit', live): its Contributor and anyone whose site
+ * role edits every project. Admin – view only can see it but not edit it: 403, not 404.
+ */
+const EDIT_PROJECT_API: Expect = {
+  ...PROJECT_API,
+  adminView: 403,
+  demotedAdmin: 404, // live: no admin role any more, and no role on the project
+};
+
+/**
+ * Giving someone a role on project A (PUT …/access): its Managers and site admins who manage people,
+ * read live. Seeing it isn't enough (403); not seeing it is 404.
+ */
+const GRANT_API: Expect = {
+  ...PROJECT_API,
+  member: 403, // a Contributor can't share it
+  adminView: 403,
+  adminContent: 403,
+  demotedAdmin: 404, // live
 };
 
 /**
@@ -88,33 +134,19 @@ const ADMIN_PAGE: Expect = {
   revokedSession: 307,
 };
 
-/** API routes any signed-in person may call. */
-const SIGNED_IN_API: Expect = {
-  anonymous: 401, member: 200, otherMember: 200, ...ADMINS(200),
-  noAuthenticator: 403, // mfa_enrollment_required
-  demotedAdmin: 200,
-  disabledAdmin: 401, // account_disabled
-  revokedSession: 401, // invalid_token
-};
-
-const CREATE_API: Expect = Object.fromEntries(Object.entries(SIGNED_IN_API).map(([k, v]) => [k, v === 200 ? 201 : v])) as Expect;
-
-const OWN_RECORD_API: Expect = { ...SIGNED_IN_API, otherMember: 404, adminView: 404, adminContent: 404 };
-
 // ---- The matrix -------------------------------------------------------------------------------
 
-let memberTicketId = '';
+let projectId = '';
+const json = (body: unknown) => ({ headers: { origin: baseUrl, 'content-type': 'application/json' }, body: JSON.stringify(body) });
 
 beforeAll(async () => {
-  // The member files a ticket through the app itself; record rows use its ID.
-  const response = await send('/api/tickets', {
-    as: 'member',
-    method: 'POST',
-    headers: { origin: baseUrl, 'content-type': 'application/json' },
-    body: JSON.stringify({ title: 'Member’s own ticket', body: 'Only the member and staff may read this.' }),
-  });
-  expect(response.status, await response.clone().text()).toBe(201);
-  memberTicketId = ((await response.json()) as { ticket: { id: string } }).ticket.id;
+  // Through the app itself: the admin creates project A (its Manager by default)...
+  const created = await send('/api/projects', { as: 'admin', method: 'POST', ...json({ name: 'Project A', summary: 'Seeded by the auth matrix.' }) });
+  expect(created.status, await created.clone().text()).toBe(201);
+  projectId = ((await created.json()) as { project: { id: string } }).project.id;
+  // ...and makes the member a Contributor on it. The second member gets nothing.
+  const granted = await send(`/api/projects/${projectId}/access`, { as: 'admin', method: 'PUT', ...json({ email: personas.member.email, role: 'contributor' }) });
+  expect(granted.status, await granted.clone().text()).toBe(200);
 });
 
 describe('auth matrix', () => {
@@ -125,19 +157,24 @@ describe('auth matrix', () => {
       { path: '/account', expect: SIGNED_IN_PAGE },
       { path: '/account/authenticator', expect: AUTHENTICATOR_PAGE },
       { path: '/app', expect: SIGNED_IN_PAGE },
-      { path: '/app/tickets/:id', expect: OWN_RECORD_PAGE },
+      { path: '/app/projects', expect: SIGNED_IN_PAGE },
+      { path: '/app/projects/:id', expect: PROJECT_PAGE },
       { path: '/admin', expect: ADMIN_PAGE },
       { path: '/admin/people', expect: ADMIN_PAGE },
       { path: '/admin/activity', expect: ADMIN_PAGE },
-      { method: 'GET', path: '/api/tickets', expect: SIGNED_IN_API },
+      { method: 'GET', path: '/api/projects', expect: SIGNED_IN_API },
       {
         method: 'POST',
-        path: '/api/tickets',
+        path: '/api/projects',
         headers: { origin: baseUrl },
-        body: { title: 'Matrix ticket', body: 'Filed by the auth matrix.' },
-        expect: CREATE_API,
+        body: { name: 'Matrix project', summary: 'Created by the auth matrix.' },
+        expect: CREATE_PROJECT_API,
       },
-      { method: 'GET', path: '/api/tickets/:id', expect: OWN_RECORD_API },
+      { method: 'GET', path: '/api/projects/:id', expect: PROJECT_API },
+      { method: 'PATCH', path: '/api/projects/:id', headers: { origin: baseUrl }, body: { summary: 'Edited by the auth matrix.' }, expect: EDIT_PROJECT_API },
+      { method: 'GET', path: '/api/projects/:id/access', expect: PROJECT_API },
+      // Re-giving the member the role they have: changes nothing, so every persona sees the same project.
+      { method: 'PUT', path: '/api/projects/:id/access', headers: { origin: baseUrl }, body: { email: personas.member.email, role: 'contributor' }, expect: GRANT_API },
     ];
 
     const results = await assertAuthMatrix({
@@ -148,10 +185,10 @@ describe('auth matrix', () => {
         anonymous: {},
         ...Object.fromEntries((Object.keys(MATRIX_PERSONAS) as MatrixPersonaKey[]).map((name) => [name, persona(name)])),
       },
-      params: { id: memberTicketId },
+      params: { id: projectId },
       routes,
     });
-    // 12 routes × 12 personas × 2 passes.
+    // 16 routes × 12 personas × 2 passes.
     expect(results.length).toBe(routes.length * 12 * 2);
   });
 });
@@ -167,55 +204,91 @@ describe('what the matrix rows can’t express', () => {
     expect(noAuthenticator.headers.get('location')).toMatch(/\/account\/authenticator$/);
   });
 
-  it('lists are filtered on the server: another member never sees the ticket; staff do', async () => {
-    const ids = async (as: MatrixPersonaKey) => {
-      const response = await send('/api/tickets', { as });
+  it('lists are filtered on the server: the Contributor and site admins see project A; the second member never does', async () => {
+    const list = async (as: MatrixPersonaKey) => {
+      const response = await send('/api/projects', { as });
       expect(response.status).toBe(200);
-      return ((await response.json()) as { tickets: { id: string }[] }).tickets.map((t) => t.id);
+      return (await response.json()) as { scope: string; projects: { id: string; role: string | null }[] };
     };
-    expect(await ids('member')).toContain(memberTicketId);
-    expect(await ids('otherMember')).not.toContain(memberTicketId);
-    expect(await ids('adminView')).not.toContain(memberTicketId);
-    expect(await ids('adminContent')).not.toContain(memberTicketId);
-    expect(await ids('admin')).toContain(memberTicketId);
-    expect(await ids('owner')).toContain(memberTicketId);
+    const member = await list('member');
+    expect(member.scope).toBe('mine');
+    expect(member.projects.find((p) => p.id === projectId)).toMatchObject({ role: 'contributor' });
+    expect((await list('otherMember')).projects.map((p) => p.id)).not.toContain(projectId);
+    for (const admin of ['adminView', 'adminContent', 'admin', 'owner'] as const) {
+      const seen = await list(admin);
+      expect(seen.scope, admin).toBe('all');
+      expect(seen.projects.map((p) => p.id), admin).toContain(projectId);
+    }
+    expect((await list('admin')).projects.find((p) => p.id === projectId)).toMatchObject({ role: 'manager' });
+  });
+
+  it('who has access: the admin is Manager, the member Contributor; the page shows the panel in the project’s words', async () => {
+    const access = await send(`/api/projects/${projectId}/access`, { as: 'member' });
+    expect(access.status).toBe(200);
+    const body = (await access.json()) as { members: { sub: string; role: string }[]; managers: number };
+    expect(body.managers).toBe(1);
+    expect(body.members.map((m) => [m.sub, m.role])).toEqual([
+      [personas.admin.sub, 'manager'],
+      [personas.member.sub, 'contributor'],
+    ]);
+    const page = await send(`/app/projects/${projectId}`, { as: 'admin' });
+    const html = await page.text();
+    expect(html).toContain('Who has access to this project');
+    expect(html).toContain('Share this project');
+    // The Contributor sees the list but can't share it.
+    const contributorPage = await (await send(`/app/projects/${projectId}`, { as: 'member' })).text();
+    expect(contributorPage).toContain('Who has access to this project');
+    expect(contributorPage).not.toContain('Share this project');
+  });
+
+  it('the Activity page names project A and its people, never an ID (register rule C5)', async () => {
+    const html = await (await send('/admin/activity', { as: 'owner' })).text();
+    // What the page shows: its text, without scripts (the client component's props travel in them).
+    const shown = html.replace(/<script\b[\s\S]*?<\/script>/g, ' ').replace(/<[^>]+>/g, ' ');
+    expect(shown).toContain('the project “Project A”');
+    expect(shown).toContain(personas.member.email);
+    expect(shown).not.toContain(projectId);
+    for (const name of Object.keys(personas) as MatrixPersonaKey[]) expect(shown, name).not.toContain(personas[name].sub);
+  });
+
+  it('every item keeps a Manager: the only Manager can’t demote themselves through the API', async () => {
+    const response = await send(`/api/projects/${projectId}/access`, { as: 'admin', method: 'PUT', ...json({ email: personas.admin.email, role: 'reader' }) });
+    expect(response.status).toBe(409);
+    expect((await response.json()) as { guardrail: string }).toMatchObject({ guardrail: 'last_manager' });
   });
 
   it('a state change from another origin is refused (403 origin_mismatch)', async () => {
-    const response = await send('/api/tickets', {
-      as: 'member',
+    const response = await send('/api/projects', {
+      as: 'admin',
       method: 'POST',
       headers: { origin: 'https://attacker.example', 'content-type': 'application/json' },
-      body: JSON.stringify({ title: 'Cross-site' }),
+      body: JSON.stringify({ name: 'Cross-site' }),
     });
     expect(response.status).toBe(403);
     expect(((await response.json()) as { error: string }).error).toBe('origin_mismatch');
 
     // Only the configured origin counts (lib/origin.ts), not request.url's (next dev says localhost).
-    const localhost = await send('/api/tickets', {
+    const localhost = await send(`/api/projects/${projectId}`, {
       as: 'member',
-      method: 'POST',
+      method: 'PATCH',
       headers: { origin: baseUrl.replace('127.0.0.1', 'localhost'), 'content-type': 'application/json' },
-      body: JSON.stringify({ title: 'Wrong origin' }),
+      body: JSON.stringify({ name: 'Wrong origin' }),
     });
     expect(localhost.status).toBe(403);
   });
 
-  it('input is validated on the server (415 for non-JSON, 400 for a bad title)', async () => {
-    const form = await send('/api/tickets', { as: 'member', method: 'POST', headers: { origin: baseUrl, 'content-type': 'text/plain' }, body: 'title=x' });
+  it('input is validated on the server (415 for non-JSON, 400 for a bad name)', async () => {
+    const form = await send('/api/projects', { as: 'admin', method: 'POST', headers: { origin: baseUrl, 'content-type': 'text/plain' }, body: 'name=x' });
     expect(form.status).toBe(415);
-    const empty = await send('/api/tickets', {
-      as: 'member',
-      method: 'POST',
-      headers: { origin: baseUrl, 'content-type': 'application/json' },
-      body: JSON.stringify({ title: '   ' }),
-    });
+    const empty = await send('/api/projects', { as: 'admin', method: 'POST', ...json({ name: '   ' }) });
     expect(empty.status).toBe(400);
+    const badRole = await send(`/api/projects/${projectId}/access`, { as: 'admin', method: 'PUT', ...json({ email: personas.otherMember.email, role: 'owner' }) });
+    expect(badRole.status).toBe(400);
   });
 
   it('a forged token (groups edited, signature kept) is refused everywhere', async () => {
     const forged = tamperToken(personas.member.accessToken, { 'cognito:groups': ['owner'] });
-    const response = await fetch(new URL('/api/tickets', baseUrl), { headers: { authorization: `Bearer ${forged}` } });
+    const response = await fetch(new URL('/api/projects', baseUrl), { headers: { authorization: `Bearer ${forged}` } });
     expect(response.status).toBe(401);
     const page = await fetch(new URL('/admin/people', baseUrl), { headers: { authorization: `Bearer ${forged}` }, redirect: 'manual' });
     expect(page.status).toBe(307);
