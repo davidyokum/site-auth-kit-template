@@ -1,6 +1,6 @@
 /**
  * The site's backdrop (lib/backdrop.ts): what the sign-in pages draw, and the build's lock check.
- * auth-kit ADR 0020: the name only proposes; a locked backdrop never changes; deploy builds refuse
+ * auth-kit ADR 0021: the name only proposes; a locked backdrop never changes; deploy builds refuse
  * a backdrop that isn't locked.
  */
 import { defaultBackdrop } from 'auth-kit/backdrops';

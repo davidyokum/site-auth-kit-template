@@ -45,12 +45,14 @@ jobs:
       # The localhost kit is absent from the build (no dev sign-in code, no /api/dev/sign-in route)...
       - run: npx auth-kit check-prod-build
 
-      # ...and the deployed server answers forged requests to the dev route with 404.
+      # ...and the deployed server answers forged requests to the dev routes with 404.
       - name: auth-kit check-dev-route against next start
         run: |
           npx next start --hostname 127.0.0.1 --port 3100 > next-start.log 2>&1 &
           for i in $(seq 1 60); do curl -fs -o /dev/null http://127.0.0.1:3100/ && break; sleep 1; done
           npx auth-kit check-dev-route --url http://127.0.0.1:3100
+          npx auth-kit check-dev-route --url http://127.0.0.1:3100 --route /api/dev/backdrop
+          npx auth-kit check-dev-route --url http://127.0.0.1:3100 --route /dev/backdrops
           kill %1 || true
 
       # Every route × every persona, with and without the proxy, against next dev (no AWS).

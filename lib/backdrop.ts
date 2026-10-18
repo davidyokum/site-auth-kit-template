@@ -1,5 +1,5 @@
 /**
- * The site's backdrop (auth-kit/backdrops; ADR 0020): what the sign-in card sits on, and the build's
+ * The site's backdrop (auth-kit/backdrops; ADR 0021): what the sign-in card sits on, and the build's
  * check that it's locked.
  *
  * site.config.ts stores the literal choice, `{ style, seed, styleVersion, locked: true }`. Until a

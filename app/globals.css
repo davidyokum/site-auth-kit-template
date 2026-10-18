@@ -346,9 +346,10 @@ select {
 /*
  * The sign-in scene: the card on the site's backdrop (components/auth-scene.tsx, auth-card.tsx).
  * The design report's §7.1 core: a white card 440px wide with 6px corners and a 4px family rule,
- * 48px fields and buttons, 16px text; ink #092940, body #3c434b, a 3px focus ring. Family colors come
- * in as custom properties from auth-kit's family table. The scene stays light in dark mode: the
- * design defines one light card, and the backdrops are painted for light pages.
+ * 48px fields and buttons, 16px text; ink #092940, body #3c434b, a 3px focus ring. The card carries
+ * its own contrast (a 1px family-tinted border and a soft shadow); nothing fades the backdrop around
+ * it. Family colors come in as custom properties from auth-kit's family table. The scene stays light
+ * in dark mode: the design defines one light card, and the backdrops are painted for light pages.
  */
 body {
   min-height: 100vh;
@@ -388,10 +389,11 @@ main:has(> .akp) {
   width: min(440px, 100%);
   background: #ffffff;
   color: var(--card-body);
+  border: 1px solid var(--card-border);
   border-top: 4px solid var(--card-rule);
   border-radius: 6px;
   padding: 32px 36px 24px;
-  box-shadow: 0 1px 2px rgba(9, 41, 64, 0.06), 0 16px 40px -16px rgba(9, 41, 64, 0.22);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.08), 0 20px 48px -20px rgba(16, 24, 40, 0.4);
   font-size: 16px;
   line-height: 1.5;
 }
@@ -487,6 +489,15 @@ main:has(> .akp) {
   border: 1px solid #8a94a3;
   background: #ffffff;
   color: #092940;
+}
+
+.auth-card [data-auth-kit-slot='linkButton'] {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  font-weight: 400;
+  text-decoration: underline;
 }
 
 .auth-card [data-auth-kit-slot='linkButton'],

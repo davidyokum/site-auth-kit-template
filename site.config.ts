@@ -13,7 +13,7 @@ import type { SiteFamily } from './site.families';
 
 /**
  * The art behind the sign-in card, as stored. Locked: `{ style, seed, styleVersion, locked: true }`,
- * all literal (auth-kit ADR 0020). `npm run backdrop:pick` and `npm run backdrop:lock` write it.
+ * all literal (auth-kit ADR 0021). `npm run backdrop:pick` and `npm run backdrop:lock` write it.
  */
 export interface SiteBackdrop {
   readonly style: BackdropStyleId;

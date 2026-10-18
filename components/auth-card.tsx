@@ -1,8 +1,9 @@
 /**
  * The sign-in card (the design report's §7.1 core): the same everywhere but for the family's owner
- * line, identity line, and three colors (the primary button, the 4px rule, links), which come from
- * auth-kit/backdrops' family table so the card and its backdrop agree. All text sits inside the card;
- * nothing is ever written on the backdrop (auth-kit ADR 0020).
+ * line, identity line, and colors (the primary button, the 4px rule, links, the border's tint), which
+ * come from auth-kit/backdrops' family table so the card and its backdrop agree. The card carries its
+ * own contrast: opaque, a crisp 1px border, a soft shadow; nothing fades the backdrop around it. All
+ * text sits inside the card; nothing is ever written on the backdrop (auth-kit ADR 0021).
  *
  * `data-backdrop-card` tells the backdrop where the card is, so its scrim keeps the art quiet here.
  * A plain component (no hooks, no server-only imports): pages, error boundaries, and the backdrop
@@ -18,6 +19,7 @@ export function AuthCard({ children, family = site.family }: { children: ReactNo
   const identity = { ...site, family };
   const colors = {
     '--card-rule': theme.rule,
+    '--card-border': theme.border,
     '--card-button': theme.button,
     '--card-button-text': theme.buttonText,
     '--card-link': theme.link,

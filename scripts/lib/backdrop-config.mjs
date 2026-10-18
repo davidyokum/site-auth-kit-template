@@ -1,4 +1,4 @@
-// Writing the site's backdrop into site.config.ts (auth-kit ADR 0020): the backdrop picker's "Use
+// Writing the site's backdrop into site.config.ts (auth-kit ADR 0021): the backdrop picker's "Use
 // this one" (app/api/dev/backdrop/route.dev.ts) and `npm run backdrop:lock` both come here.
 //
 // site.config.ts is code, so what goes in is checked first: a style auth-kit has, a version of it

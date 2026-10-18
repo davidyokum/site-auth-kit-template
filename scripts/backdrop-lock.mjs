@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // npm run backdrop:lock: keeps the backdrop the site draws now, by writing it into site.config.ts as
-// literal values, locked (auth-kit ADR 0020). Until then it's only a proposal from the site's name,
+// literal values, locked (auth-kit ADR 0021). Until then it's only a proposal from the site's name,
 // and production builds refuse it. Local only: no AWS, no network.
 //
 // Already locked: says so and changes nothing (choose another with `npm run backdrop:pick`).

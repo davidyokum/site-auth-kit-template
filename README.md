@@ -2,7 +2,7 @@
 
 The starter site for David Yokum's websites: a small, real Next.js 16 (App Router) site on AWS Amplify Gen 2, wired to [auth-kit](https://github.com/davidyokum/auth-kit). It meets the login standard out of the box (passkey-first sign-in, server-side checks on every route, an admin area with an append-only log, and a localhost kit for signing in as test personas) and the tests fail if a change breaks it.
 
-> Pre-release, like auth-kit (`v0.1.5-alpha`). Deployed once, as a private demo (2026-10-17): see [Verified on a live deploy, and what's left](#verified-on-a-live-deploy-and-whats-left).
+> Pre-release, like auth-kit (`v0.1.6-alpha`). Deployed once, as a private demo (2026-10-17): see [Verified on a live deploy, and what's left](#verified-on-a-live-deploy-and-whats-left).
 
 Comments cite the login standard as "03 §2" (its rules) and "03 §1" (its tiers). The standard itself is kept privately; [auth-kit's README](https://github.com/davidyokum/auth-kit#how-the-standard-maps-to-the-code) maps every rule to the code that enforces it.
 
@@ -14,6 +14,7 @@ Comments cite the login standard as "03 §2" (its rules) and "03 §1" (its tiers
 | Default-deny proxy that verifies tokens, refreshes sessions server-side, and sets a per-request nonce CSP | `proxy.ts`, `lib/security-headers.ts` |
 | A guard on every page, layout, route handler, and server action; one capability map | `lib/auth.ts`, `lib/capabilities.ts` |
 | Pages: `/` (public), `/sign-in`, `/account` (My account), `/account/authenticator`, `/app` (members' tickets; another member's ticket is a 404), `/admin` (People and Activity, for every admin role; what each may change follows its role); `/api/tickets` (sample API) | `app/` |
+| The sign-in card on the site's backdrop (sign-in, error, and not-found pages), the family's owner line and colors, the email hint, and a local backdrop picker | `components/auth-scene.tsx`, `components/auth-card.tsx`, `lib/backdrop.ts`, `app/dev/backdrops/page.dev.tsx` |
 | Append-only audit log, grant/removal alerts, invite expiry (an hourly schedule disables invites unused for 7 days), SSR compute role with exact permissions | `lib/audit-log.ts`, `lib/alerts.ts`, `amplify/backend.ts`, `amplify/compute-role.ts` |
 | Localhost kit: personas, "Sign in as…", environment ribbon, `[DEV]` tab title, dev code kept out of builds | `personas.json`, `lib/dev/`, `app/api/dev/sign-in/route.dev.ts` |
 | Account-assert preflight, branch passwords for previews | `scripts/preflight.mjs`, `scripts/preview-password.mjs` |
@@ -45,14 +46,15 @@ You need Node 22, the AWS CLI signed in to the account you'll deploy to, and a d
 1. **Make the repo.** On GitHub, **Use this template**, or:
    `gh repo create <you>/<site> --template davidyokum/site-auth-kit-template --private --clone`
 2. **Install:** `npm ci` (the lockfile pins auth-kit's release tarball by hash).
-3. **Name the site** in `site.config.ts`: name, family (who runs it; see [Email](#email)), project slug, owner, sender address (on your SES domain), help address (`email.replyTo`), invite domains, the alert recipients, and the local name and port (if you change those, match the `dev` and `start` scripts in `package.json`).
+3. **Name the site** in `site.config.ts`: name, family (who runs it; see [Email](#email) and [The sign-in page](#the-sign-in-page-and-its-backdrop)), project slug, owner, sender address (on your SES domain), help address (`email.replyTo`), invite domains, the alert recipients, and the local name and port (if you change those, match the `dev` and `start` scripts in `package.json`).
 4. **Say where it deploys** in `deploy.config.json`: the AWS CLI profile and the 12-digit account ID it must reach. Every AWS-touching script refuses until this is right. `amplifyAppId` stays `null` until the Amplify app exists (Deploy, step 2). The hygiene test allows these two IDs, the site's own, and still fails on any other account or app ID in the repo. (Account IDs aren't secrets, but keep a public repo's copy on the placeholder.)
 5. **Personas:** in `personas.json`, change the `.test` domain to your site's (for example `my-site.test`). Add one per app role if you have any.
 6. **Your sandbox backend:** `npm run sandbox`. It checks the account, then runs `npx ampx sandbox --profile <profile>`, which deploys your own throwaway copy of the backend and writes `amplify_outputs.json`. Leave it running while you work.
 7. **Seed the personas:** `cp .env.local.example .env.local`, then `npm run personas:seed`. It refuses anything but a sandbox pool, creates each persona with a password and an authenticator, and writes their secrets to `.env.local` (never printed).
 8. **Run it:** `npm run dev`, open http://app.localhost:3000, and pick a persona from **Sign in as…** in the blue ribbon.
-9. **Make it yours.** Replace the sample tickets (`lib/tickets/`, `amplify/data/`, `app/app/`) with your own records, keeping the pattern: guards on the server, lists filtered in the query, 404 for other people's records. Add a matrix row for every page and route you add. Fill in the site record in `AGENTS.md`.
-10. **Check:** `npm run check` (typecheck, lint, unit tests, build, production-build check, auth matrix).
+9. **Choose the backdrop:** `npm run backdrop:pick` opens nine variations behind your real sign-in card; **Use this one** writes it into `site.config.ts`, locked. (Or `npm run backdrop:lock` to keep the one proposed from the site's name.) Deploys fail until it's locked.
+10. **Make it yours.** Replace the sample tickets (`lib/tickets/`, `amplify/data/`, `app/app/`) with your own records, keeping the pattern: guards on the server, lists filtered in the query, 404 for other people's records. Add a matrix row for every page and route you add. Fill in the site record in `AGENTS.md`.
+11. **Check:** `npm run check` (typecheck, lint, unit tests, build, production-build check, auth matrix).
 
 Without a sandbox, `npm run outputs:placeholder` writes a clearly fake `amplify_outputs.json` so the site builds and the tests run, but nothing can sign in.
 
@@ -81,8 +83,8 @@ Merging to `main` deploys the live site. Once it's live, work on branches.
 | `npm run typecheck` | The app and `amplify/` type-check (with the dev aliases resolved to their production modules) |
 | `npm run lint` | Next's rules, no `dangerouslySetInnerHTML`, no dev or test imports from code that ships; zero warnings |
 | `npm test` | Unit and static checks: a guard on every page, layout, route handler, and server action; origin checks (against the configured origin) on data-changing routes; `requireRecordAccess` on record routes; the CSP and the proxy's CSP hook; the error page's "couldn't check"; the capability map; the family's email text, sender, Reply-To, and footer; the preflight; the compute role's exact IAM permissions (CDK synthesis); no secrets, real pool IDs, or account and app IDs other than the site's own (`deploy.config.json`) in the repo; tests can't reach AWS |
-| `npm run build` + `npm run check:prod-build` | A production build with no dev sign-in code, no matrix server code, and no `/api/dev/sign-in` route |
-| `npx auth-kit check-dev-route` (CI) | The running production server answers forged requests to the dev route with 404 |
+| `npm run build` + `npm run check:prod-build` | A production build with no dev sign-in code, no matrix server code, no backdrop picker, and no `/api/dev/sign-in` route. On Amplify (`AWS_BRANCH` set) the build also fails if the backdrop isn't locked; elsewhere it warns |
+| `npx auth-kit check-dev-route` (CI) | The running production server answers forged requests to the dev routes (`/api/dev/sign-in`, `/api/dev/backdrop`, `/dev/backdrops`) with 404 |
 | `npm run test:matrix` | The auth matrix, below |
 
 ### The auth matrix
@@ -103,7 +105,7 @@ Server actions aren't in the route manifest; `test/unit/actions.test.ts` covers 
 
 All auth email goes through SES from `site.email.fromAddress`. Two settings in `site.config.ts` shape it:
 
-- **`family`**: who runs the site, one of the families in `site.families.ts`. The template ships `'personal'` (Yokum Lab). It sets the sender's display name (the site's name, plus the family's short name for the work families) and the footer's identity line ("Made by Yokum Lab."). The design work's per-family theme will hang off the same setting; there are no visuals yet.
+- **`family`**: who runs the site, one of the families in `site.families.ts`. The template ships `'personal'` (Yokum Lab). It sets the sender's display name (the site's name, plus the family's short name for the work families) and the footer's identity line ("Made by Yokum Lab."), and on the sign-in card the owner line, the identity line, the email hint, and the colors ([below](#the-sign-in-page-and-its-backdrop)).
 - **`email.replyTo`**: the family's help mailbox. It's the Reply-To on every auth email, so replies never go to a noreply address, and the footer ends "Help: {address}." Set it before real people get email.
 
 What each email gets:
@@ -116,6 +118,16 @@ What each email gets:
 | Grant and removal alerts | `lib/alerts.ts` | yes | yes | yes |
 
 Cognito writes its own code emails, so they get no footer. Full control of their text needs Cognito's custom email sender trigger (later).
+
+## The sign-in page and its backdrop
+
+The sign-in card is the same on every site (auth-kit's `SignIn`, in the design report's 440px card); a site is recognizable by its family and its backdrop, the art behind the card (auth-kit ADR 0021). It's decoration for recognition and delight, never a security check: nothing asks anyone to look for the picture.
+
+- **The card** (`components/auth-card.tsx`): the family's owner line above the heading and identity line at the foot, its primary button, rule, and link colors, a 1px family-tinted border and a soft shadow, all from auth-kit's family table. All text is inside the card; nothing is written on the backdrop, and nothing fades it around the card. `/sign-in`, the error page, and not-found use it (`components/auth-scene.tsx`). The scene stays light in dark mode.
+- **The email hint**: the email field's placeholder, from the family ("name@example.com" for personal sites) or `emailHint` in `site.config.ts` for a site whose people use other addresses. The "Email address" label always shows.
+- **The backdrop** is `backdrop` in `site.config.ts`: `{ style, seed, styleVersion, locked: true }`, literal values. `npm run backdrop:pick` starts the dev server (no AWS; the placeholder outputs file if you have no sandbox) and opens `/dev/backdrops`: nine variations behind the real card, a style filter or a mix of all styles, a family preview, a phone or desktop frame, **Shuffle** for nine more, and a large view where **Use this one** writes the choice (the previous file goes to `site.config.ts.bak`, git-ignored) and prints the change in the terminal.
+- **Locked means it never changes.** Until there's a choice, the site's name proposes one, which local development draws; a rename would change it, so deploy builds (Amplify sets `AWS_BRANCH`) fail until it's locked, and other builds (CI, a local `next build`) warn. `npm run backdrop:lock` keeps the proposal. auth-kit freezes every released style version, so upgrading auth-kit never redraws it; when a style has a newer version, the picker offers it side by side and only **Use this one** moves you to it.
+- **Kept out of production** like the localhost kit: the picker page and its write route are `.dev.tsx`/`.dev.ts` files (they exist only under `next dev`), the route answers 404 unless the request is from the page itself on a loopback host under `next dev`, the picker carries auth-kit's marker so `npm run check:prod-build` fails a build that contains it, and CI checks that the production server answers the dev routes with 404.
 
 ## amplify_outputs.json
 
