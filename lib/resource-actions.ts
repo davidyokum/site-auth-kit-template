@@ -12,11 +12,11 @@ import 'server-only';
 import { createResourceActions, type ResourceActions } from 'auth-kit/resources';
 import { matrixOverrides } from '@/dev-matrix';
 import { site } from '@/site.config';
+import { accountMailer } from './accounts';
 import { auditLog } from './audit-log';
 import { auth } from './auth';
-import { createSiteMailer } from './email';
+import type { SiteMailer } from './email';
 import { publicOrigin } from './origin';
-import { outputs } from './outputs';
 import { projectStore } from './projects';
 
 let actions: ResourceActions | undefined;
@@ -27,9 +27,10 @@ export function resourceActions(): ResourceActions {
   actions = createResourceActions({
     auth,
     auditLog: auditLog(),
-    // The invite email and the admins' alert, from the family's sender (lib/email.ts). Under the
-    // matrix, auth-kit's mailer that sends nothing (and its read-only Cognito changes no accounts).
-    mailer: matrix?.mailer ?? createSiteMailer({ region: outputs.auth.aws_region }),
+    // The invite email and the admins' alert, from the family's sender, in the card's layout with the
+    // help address in effect (lib/email.ts). Under the matrix, auth-kit's mailer that sends nothing
+    // (and its read-only Cognito changes no accounts).
+    mailer: matrix?.mailer ?? (accountMailer() as SiteMailer),
     siteName: site.name,
     signInUrl: `${publicOrigin()}/sign-in`,
     inviteDomains: site.inviteDomains,

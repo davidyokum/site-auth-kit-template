@@ -43,7 +43,9 @@ body {
   font: 16px/1.55 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
-a {
+/* The site's element styles stay off auth-kit's screens: auth-kit's defaults (below) have zero
+ * specificity, so a bare `button` or `input` rule here would repaint the sign-in card's controls. */
+a:not([data-auth-kit-slot]) {
   color: var(--accent);
 }
 
@@ -102,7 +104,7 @@ code {
 }
 
 .button,
-button {
+button:not([data-auth-kit-slot]) {
   font: inherit;
   font-weight: 600;
   border-radius: var(--radius);
@@ -114,7 +116,7 @@ button {
 }
 
 .button-primary,
-button[type='submit'] {
+button[type='submit']:not([data-auth-kit-slot]) {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-text);
@@ -185,9 +187,9 @@ a.button {
   font-weight: 600;
 }
 
-input,
-textarea,
-select {
+input:not([data-auth-kit-slot]),
+textarea:not([data-auth-kit-slot]),
+select:not([data-auth-kit-slot]) {
   font: inherit;
   color: var(--text);
   background: var(--bg);
@@ -213,28 +215,65 @@ select {
 
 /* auth-kit/client: its optional zero-specificity defaults (authKitStyles), copied here so the CSP
  * needs no inline <style>. Any rule above wins. Keep it in step with auth-kit's (a unit test checks):
- * the totp-gate rules keep the gate's content hidden until its check passes (auth-kit ADR 0015). */
+ * the card (the family's colors and its 3:1 edge come in as --ak-* custom properties, set on the card
+ * by auth-kit), its fields and buttons, and the totp-gate rules that keep the gate's content hidden
+ * until its check passes (auth-kit ADR 0015). */
 :where([data-auth-kit]) { display: grid; gap: 1rem; max-width: 30rem; }
+:where([data-auth-kit="sign-in"], [data-auth-kit="sign-up"], [data-auth-kit="request-access"], [data-auth-kit="signed-out"]) { display: block; width: 100%; max-width: var(--ak-card-width, 380px); margin-inline: auto; }
+:where([data-auth-kit] [data-auth-kit-slot="card"]) { display: grid; gap: 1rem; box-sizing: border-box; padding: 36px 32px 24px; background: var(--ak-surface, #fff); color: var(--ak-text, #3c434b); border: 1px solid var(--ak-edge, #4a5f73); border-radius: 12px; box-shadow: 0 1px 2px rgba(9, 41, 64, 0.05), 0 16px 36px -16px rgba(9, 41, 64, 0.22); font-size: 1rem; line-height: 1.5; }
+@media (max-width: 480px) { :where([data-auth-kit] [data-auth-kit-slot="card"]) { padding: 28px 22px 20px; } }
 :where([data-auth-kit="totp-gate"]) { display: block; max-width: none; }
 :where([data-auth-kit="totp-gate"] > [data-auth-kit-slot="content"][hidden]) { display: none !important; }
-:where([data-auth-kit] [data-auth-kit-slot="form"], [data-auth-kit] [data-auth-kit-slot="section"]) { display: grid; gap: 1rem; }
-:where([data-auth-kit] [data-auth-kit-slot="heading"]) { margin: 0; }
+:where([data-auth-kit] [data-auth-kit-slot="form"], [data-auth-kit] [data-auth-kit-slot="section"], [data-auth-kit] [data-auth-kit-slot="content"]) { display: grid; gap: 1rem; }
+:where([data-auth-kit] [data-auth-kit-slot="heading"]) { margin: 0; color: var(--ak-ink, #092940); font-size: 1.5rem; line-height: 1.25; display: flex; gap: 0.5rem; align-items: center; }
 :where([data-auth-kit] [data-auth-kit-slot="heading"]:focus) { outline: none; }
-:where([data-auth-kit] [data-auth-kit-slot="text"], [data-auth-kit] [data-auth-kit-slot="hint"]) { margin: 0; }
-:where([data-auth-kit] [data-auth-kit-slot="hint"]) { font-size: 0.875em; opacity: 0.8; }
-:where([data-auth-kit] [data-auth-kit-slot="field"]) { display: grid; gap: 0.25rem; }
-:where([data-auth-kit] [data-auth-kit-slot="label"]) { font-weight: 600; }
-:where([data-auth-kit] [data-auth-kit-slot="input"]) { font: inherit; padding: 0.5rem 0.625rem; }
-:where([data-auth-kit] [data-auth-kit-slot="input"][aria-invalid="true"]) { outline: 2px solid #c5221f; outline-offset: 1px; }
+:where([data-auth-kit] [data-auth-kit-slot="text"], [data-auth-kit] [data-auth-kit-slot="hint"], [data-auth-kit] [data-auth-kit-slot="small"], [data-auth-kit] [data-auth-kit-slot="who"]) { margin: 0; }
+:where([data-auth-kit] [data-auth-kit-slot="hint"], [data-auth-kit] [data-auth-kit-slot="small"], [data-auth-kit] [data-auth-kit-slot="footer"], [data-auth-kit] [data-auth-kit-slot="notice"]) { font-size: 0.875rem; color: var(--ak-muted, #56606b); margin: 0; }
+:where([data-auth-kit] [data-auth-kit-slot="field"]) { display: grid; gap: 0.375rem; }
+:where([data-auth-kit] [data-auth-kit-slot="label"]) { font-weight: 600; color: var(--ak-ink, #092940); }
+:where([data-auth-kit] [data-auth-kit-slot="input"]) { font: inherit; font-size: max(1rem, 16px); min-height: 48px; box-sizing: border-box; padding: 0.625rem 0.75rem; color: var(--ak-ink, #092940); background: #fff; border: 1px solid var(--ak-field-border, #6b7480); border-radius: 8px; }
+:where([data-auth-kit] textarea[data-auth-kit-slot="input"]) { min-height: 6rem; resize: vertical; }
+:where([data-auth-kit] [data-auth-kit-slot="input"]::placeholder) { color: #646e79; }
+:where([data-auth-kit] [data-auth-kit-slot="input"][aria-invalid="true"]) { border-color: var(--ak-error, #b42318); border-width: 2px; }
+:where([data-auth-kit] :focus-visible) { outline: 3px solid var(--ak-focus, #3892e1); outline-offset: 2px; }
+:where([data-auth-kit] [data-auth-kit-slot="fieldError"]) { margin: 0; color: var(--ak-error, #b42318); font-weight: 600; }
+:where([data-auth-kit] [data-auth-kit-slot="summary"]) { display: flex; gap: 0.5rem; align-items: flex-start; padding: 0.75rem 0.875rem; border: 2px solid var(--ak-error, #b42318); border-radius: 8px; color: var(--ak-error, #b42318); font-weight: 600; }
+:where([data-auth-kit] [data-auth-kit-slot="summary"][hidden]) { display: none; }
+:where([data-auth-kit] [data-auth-kit-slot="summary"] p, [data-auth-kit] [data-auth-kit-slot="summary"] ul) { margin: 0; padding: 0; list-style: none; }
+:where([data-auth-kit] [data-auth-kit-slot="summary"] a) { color: inherit; }
+:where([data-auth-kit] [data-auth-kit-slot="note"], [data-auth-kit] [data-auth-kit-slot="wait"], [data-auth-kit] [data-auth-kit-slot="contact"]) { display: flex; gap: 0.5rem; align-items: flex-start; padding: 0.75rem 0.875rem; border-radius: 8px; background: rgba(9, 41, 64, 0.045); }
+:where([data-auth-kit] [data-auth-kit-slot="note"] p) { margin: 0; }
+:where([data-auth-kit] [data-auth-kit-slot="contact"]) { display: grid; gap: 0.25rem; }
+:where([data-auth-kit] [data-auth-kit-slot="contact"] p) { margin: 0; }
 :where([data-auth-kit] [data-auth-kit-slot="actions"]) { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; }
-:where([data-auth-kit] [data-auth-kit-slot="button"], [data-auth-kit] [data-auth-kit-slot="secondaryButton"]) { font: inherit; padding: 0.5rem 1rem; cursor: pointer; }
-:where([data-auth-kit] [data-auth-kit-slot="button"]) { font-weight: 600; }
-:where([data-auth-kit] [data-auth-kit-slot="linkButton"]) { font: inherit; background: none; border: 0; padding: 0; color: LinkText; text-decoration: underline; cursor: pointer; }
+:where([data-auth-kit] [data-auth-kit-slot="button"], [data-auth-kit] [data-auth-kit-slot="secondaryButton"]) { font: inherit; min-height: 48px; padding: 0.625rem 1rem; border-radius: 8px; cursor: pointer; display: inline-flex; gap: 0.5rem; align-items: center; justify-content: center; text-decoration: none; }
+:where([data-auth-kit] [data-auth-kit-slot="button"]) { width: 100%; font-weight: 600; color: var(--ak-button-text, #fff); background: var(--ak-button, #1e79c8); border: 0; }
+:where([data-auth-kit] [data-auth-kit-slot="button"][data-danger]) { background: var(--ak-error, #b42318); }
+:where([data-auth-kit] [data-auth-kit-slot="secondaryButton"]) { color: var(--ak-ink, #092940); background: #fff; border: 1px solid var(--ak-field-border, #6b7480); }
+:where([data-auth-kit] [data-auth-kit-slot="linkButton"], [data-auth-kit] [data-auth-kit-slot="link"], [data-auth-kit] [data-auth-kit-slot="showButton"]) { font: inherit; background: none; border: 0; padding: 0; color: var(--ak-link, #1668b0); text-decoration: underline; cursor: pointer; display: inline-flex; gap: 0.375rem; align-items: center; }
+:where([data-auth-kit] [data-auth-kit-slot="field"]:has([data-auth-kit-slot="showButton"])) { position: relative; }
+:where([data-auth-kit] [data-auth-kit-slot="showButton"]) { justify-self: end; font-size: 0.875rem; }
+:where([data-auth-kit] [data-auth-kit-slot="alts"], [data-auth-kit] [data-auth-kit-slot="list"]) { margin: 0; padding: 0; list-style: none; display: grid; gap: 0.25rem; }
+:where([data-auth-kit] [data-auth-kit-slot="alts"] [data-auth-kit-slot="linkButton"]) { width: 100%; min-height: 44px; text-decoration: none; }
+:where([data-auth-kit] [data-auth-kit-slot="alts"] [data-auth-kit-slot="linkButton"] span) { flex: 1; text-align: start; text-decoration: underline; }
+:where([data-auth-kit] [data-auth-kit-slot="list"] [data-auth-kit-slot="secondaryButton"]) { width: 100%; justify-content: space-between; }
+:where([data-auth-kit] [data-auth-kit-slot="steps"]) { margin: 0; padding-inline-start: 1.25rem; display: grid; gap: 0.5rem; }
+:where([data-auth-kit] [data-auth-kit-slot="choice"]) { display: grid; gap: 0.5rem; padding: 1rem; border: 1px solid var(--ak-field-border, #6b7480); border-radius: 10px; }
+:where([data-auth-kit] [data-auth-kit-slot="choice"] h2) { margin: 0; font-size: 1.0625rem; color: var(--ak-ink, #092940); display: flex; gap: 0.5rem; align-items: center; }
+:where([data-auth-kit] [data-auth-kit-slot="choice"] p) { margin: 0; }
+:where([data-auth-kit] [data-auth-kit-slot="bottom"]) { display: grid; gap: 0.5rem; justify-items: start; padding-top: 1rem; border-top: 1px solid rgba(9, 41, 64, 0.1); }
+:where([data-auth-kit] [data-auth-kit-slot="access"]) { margin: 0; }
+:where([data-auth-kit] [data-auth-kit-slot="below"]) { margin: 0.75rem 0 0; text-align: center; }
+:where([data-auth-kit] [data-auth-kit-slot="glyph"]) { color: var(--ak-accent, #1e79c8); }
+:where([data-auth-kit] [data-auth-kit-slot="glyph"] svg) { width: 40px; height: 40px; }
+:where([data-auth-kit] [data-auth-kit-icon="fingerprint"], [data-auth-kit] [data-auth-kit-icon="password"]) { color: var(--ak-accent, #1e79c8); flex: none; }
+:where([data-auth-kit] [data-auth-kit-slot="code"]) { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.05em; overflow-wrap: anywhere; }
 :where([data-auth-kit] button:disabled) { cursor: not-allowed; opacity: 0.6; }
 :where([data-auth-kit] [data-auth-kit-slot="error"]:empty, [data-auth-kit] [data-auth-kit-slot="status"]:empty) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-:where([data-auth-kit] [data-auth-kit-slot="error"]) { color: #c5221f; font-weight: 600; }
-:where([data-auth-kit] [data-auth-kit-slot="code"]) { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.05em; overflow-wrap: anywhere; }
-:where([data-auth-kit] [data-auth-kit-slot="list"]) { margin: 0; padding-left: 1.25rem; display: grid; gap: 0.5rem; }
+:where([data-auth-kit] [data-auth-kit-slot="error"]) { color: var(--ak-error, #b42318); font-weight: 600; }
+:where([data-auth-kit] [data-auth-kit-sr]) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@media (prefers-reduced-motion: no-preference) { :where([data-auth-kit] [data-auth-kit-slot="wait"] svg) { animation: ak-pulse 1.6s ease-in-out infinite; } }
+@keyframes ak-pulse { 50% { opacity: 0.45; } }
 
 /* auth-kit/admin/ui: unstyled semantic HTML with ak- class names. A few readable defaults. */
 .ak-table {
@@ -438,12 +477,12 @@ button.ak-button-danger {
 
 
 /*
- * The sign-in scene: the card on the site's backdrop (components/auth-scene.tsx, auth-card.tsx).
- * The design report's §7.1 core: a white card 440px wide with 6px corners and a 4px family rule,
- * 48px fields and buttons, 16px text; ink #092940, body #3c434b, a 3px focus ring. The card carries
- * its own contrast (a 1px family-tinted border and a soft shadow); nothing fades the backdrop around
- * it. Family colors come in as custom properties from auth-kit's family table. The scene stays light
- * in dark mode: the design defines one light card, and the backdrops are painted for light pages.
+ * The sign-in scene: auth-kit's card on the site's backdrop (components/auth-scene.tsx). The card is
+ * auth-kit's own (`SignIn`, `SignUp`, `RequestAccess`, `SignedOutEverywhere`, `AuthCard`): 380px wide
+ * (`--ak-card-width`), 48px fields and buttons, 16px text, the family's colors, and a 1px edge computed
+ * to reach 3:1 against every backdrop color (auth-kit ADR 0024). Nothing fades the backdrop around it,
+ * and no text sits on the art. The scene stays light in dark mode: the card is one light design, and
+ * the backdrops are painted for light pages.
  */
 body {
   min-height: 100vh;
@@ -479,151 +518,87 @@ main:has(> .akp) {
   padding: 56px var(--gutter) 72px;
 }
 
-.auth-card {
-  width: min(440px, 100%);
-  background: #ffffff;
-  color: var(--card-body);
-  border: 1px solid var(--card-border);
-  border-top: 4px solid var(--card-rule);
-  border-radius: 6px;
-  padding: 32px 36px 24px;
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.08), 0 20px 48px -20px rgba(16, 24, 40, 0.4);
-  font-size: 16px;
-  line-height: 1.5;
-}
-
 @media (max-width: 480px) {
   .auth-scene-content {
     padding: 24px var(--gutter) 40px;
     align-items: start;
   }
-  .auth-card {
-    padding: 24px 20px 20px;
-  }
 }
 
-.auth-card-owner {
-  margin: 0 0 6px;
-  font-size: 14px;
-  color: #5b6270;
-}
+/* The site's own cards on the backdrop (the error page, not found, the first-credential chooser):
+ * auth-kit's AuthCard, as wide as the sign-in card. */
+:where([data-auth-kit="site-message"]) { display: block; width: 100%; max-width: var(--ak-card-width, 380px); margin-inline: auto; }
+:where([data-auth-kit="site-message"] [data-auth-kit="choose-first-credential"]) { max-width: none; }
 
-.auth-card-footer {
-  margin: 24px 0 0;
-  padding-top: 16px;
-  border-top: 1px solid #e5e7eb;
-  font-size: 14px;
-  color: #5b6270;
+/* auth-kit/admin/ui (0.1.8): the People page's tabs and pending requests, and Settings. */
+.ak-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 16px;
 }
-
-.auth-card h1,
-.auth-card [data-auth-kit-slot='heading'] {
-  margin: 0;
-  font-size: 28px;
-  line-height: 1.2;
-  font-weight: 650;
-  color: var(--card-heading);
-  letter-spacing: -0.01em;
-}
-
-.auth-card [data-auth-kit] {
-  max-width: none;
-  gap: 20px;
-}
-
-.auth-card [data-auth-kit-slot='form'] {
-  gap: 20px;
-}
-
-.auth-card [data-auth-kit-slot='label'] {
-  color: var(--card-heading);
-}
-
-.auth-card [data-auth-kit-slot='input'] {
-  height: 48px;
-  width: 100%;
-  padding: 0 12px;
-  border: 1px solid #8a94a3;
-  border-radius: 4px;
-  background: #ffffff;
-  color: #092940;
-  font-size: 16px;
-}
-
-.auth-card [data-auth-kit-slot='input']::placeholder {
-  color: #6b7280;
-  opacity: 1;
-}
-
-.auth-card [data-auth-kit-slot='input']:focus-visible,
-.auth-card button:focus-visible,
-.auth-card a:focus-visible {
-  outline: 3px solid var(--card-focus);
-  outline-offset: 2px;
-}
-
-.auth-card [data-auth-kit-slot='actions'] {
-  gap: 8px 20px;
-}
-
-.auth-card [data-auth-kit-slot='button'] {
-  min-height: 48px;
-  width: 100%;
-  border: 0;
-  border-radius: 4px;
-  background: var(--card-button);
-  color: var(--card-button-text);
-  font-weight: 600;
-  font-size: 16px;
-}
-
-.auth-card [data-auth-kit-slot='secondaryButton'] {
-  min-height: 48px;
-  border-radius: 4px;
-  border: 1px solid #8a94a3;
-  background: #ffffff;
-  color: #092940;
-}
-
-.auth-card [data-auth-kit-slot='linkButton'] {
-  padding: 0;
-  border: 0;
-  border-radius: 0;
+.ak-tab {
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: var(--radius) var(--radius) 0 0;
   background: none;
-  font-weight: 400;
-  text-decoration: underline;
+  font-weight: 600;
 }
-
-.auth-card [data-auth-kit-slot='linkButton'],
-.auth-card a {
-  color: var(--card-link);
-  text-underline-offset: 2px;
+.ak-tab[aria-selected='true'] {
+  border-color: var(--border);
+  background: var(--surface);
 }
-
-.auth-card [data-auth-kit-slot='text'],
-.auth-card [data-auth-kit-slot='hint'] {
-  color: var(--card-body);
+.ak-badge {
+  display: inline-block;
+  min-width: 1.5em;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 0.8em;
+  text-align: center;
 }
-
-.auth-card [data-auth-kit-slot='error'] {
-  color: #b3261e;
+.ak-badge-unknown {
+  background: var(--surface);
+  color: var(--muted);
+  border: 1px solid var(--border);
 }
-
-.auth-card .auth-message {
-  gap: 14px;
+.ak-requests,
+.ak-settings,
+.ak-request-list {
+  display: grid;
+  gap: 12px;
 }
-
-.auth-card .auth-message p {
+.ak-request-list {
+  list-style: none;
   margin: 0;
+  padding: 0;
 }
-
-.auth-card .auth-message button {
-  min-height: 48px;
-  padding: 0 20px;
-  border: 0;
-  border-radius: 4px;
-  background: var(--card-button);
-  color: var(--card-button-text);
+.ak-request {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.ak-request-reason {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ak-note {
+  margin: 0;
+  color: var(--muted);
+}
+.ak-action-form,
+.ak-field {
+  display: grid;
+  gap: 8px;
+}
+.ak-dialog-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 /* auth-kit/backdrops: its optional zero-specificity defaults (backdropStyles), copied here so the CSP

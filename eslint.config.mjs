@@ -29,8 +29,8 @@ export default defineConfig([
     },
   },
   {
-    // The places dev-only and test-only code is allowed.
-    files: ['lib/dev/**', 'app/**/*.dev.ts', 'app/**/*.dev.tsx', 'test/**', 'next.config.ts'],
+    // The places dev-only and test-only code is allowed (scripts/ are local tools: they never ship).
+    files: ['lib/dev/**', 'app/**/*.dev.ts', 'app/**/*.dev.tsx', 'test/**', 'scripts/**', 'next.config.ts'],
     rules: { 'no-restricted-imports': 'off' },
   },
   globalIgnores(['.next/**', '.next-matrix/**', 'out/**', 'build/**', 'next-env.d.ts', '.amplify/**', 'coverage/**']),

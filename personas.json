@@ -5,5 +5,8 @@
   { "key": "admin-content", "email": "admin-content@example-site.test", "groups": ["admin-content"], "label": "Admin – content only" },
   { "key": "admin-view", "email": "admin-view@example-site.test", "groups": ["admin-view"], "label": "Admin – view only" },
   { "key": "member", "email": "member@example-site.test", "groups": [], "label": "Member" },
-  { "key": "member-2", "email": "member-2@example-site.test", "groups": [], "label": "Second member" }
+  { "key": "member-2", "email": "member-2@example-site.test", "groups": [], "label": "Second member" },
+  { "key": "manager", "email": "manager@example-site.test", "groups": [], "label": "Member: Manager of the sample project" },
+  { "key": "contributor", "email": "contributor@example-site.test", "groups": [], "label": "Member: Contributor on the sample project" },
+  { "key": "reader", "email": "reader@example-site.test", "groups": [], "label": "Member: Reader on the sample project" }
 ]

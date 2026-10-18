@@ -14,6 +14,12 @@ export interface SiteCustomOutputs {
   projectsTable?: string;
   /** Who has which role on which project (amplify/backend.ts, auth-kit's `ResourceAccessTable`). */
   resourceAccessTable?: string;
+  /** Settings changed without a deploy, such as a Super admin's sign-in help address (`SiteSettingsTable`). */
+  siteSettingsTable?: string;
+  /** Sign-up and request sites: the routes' rate-limit counters (`RateLimitTable`). */
+  rateLimitTable?: string;
+  /** Request sites: the access-request queue (`AccessRequestTable`). */
+  accessRequestTable?: string;
   /** The SSR compute role to attach in Amplify Hosting (amplify/compute-role.ts). */
   computeRoleArn?: string;
 }

@@ -1,101 +1,80 @@
 /**
- * The family table's text (site.families.ts), from the sign-in design report (5.1, 7.2): the
- * sender's display name and the footer of the email the site sends. This file and the table are
- * the two the hygiene test lets name an employer, by exact path (test/unit/hygiene.test.ts).
+ * The families (site.families.ts) and this site's theme (lib/theme.ts). Since auth-kit 0.1.8 the
+ * families are auth-kit themes (ADR 0024): the sender name, the footer identity line on the card and
+ * every email, the email hint, and the help route come from there. The table here holds what auth-kit
+ * leaves to each site: the family help mailboxes (register E4c). This file and the table are the two
+ * the hygiene test lets name an employer, by exact path (test/unit/hygiene.test.ts).
  */
+import { FAMILY_THEMES, helpAddressProblems, senderDisplayName } from 'auth-kit/themes';
 import { describe, expect, it } from 'vitest';
+import { signInHelpProp, siteTheme } from '@/lib/theme';
 import { site } from '@/site.config';
-import { BACKDROP_FAMILIES } from 'auth-kit/backdrops';
-import { cardFooter, emailFooter, emailHintFor, type FamilySite, ownerLine, SITE_FAMILIES, senderDisplayName } from '@/site.families';
+import { FAMILY_HELP_MAILBOX, FAMILY_NAMES_OWNER, type FamilySite, helpAddressFor, SITE_FAMILIES } from '@/site.families';
 
-const make = (family: FamilySite['family'], extra: { familyUnit?: string | null; replyTo?: string | null } = {}): FamilySite => ({
-  name: 'Example Site',
-  family,
-  familyUnit: extra.familyUnit ?? null,
-  email: { replyTo: extra.replyTo ?? null },
-});
+const make = (family: FamilySite['family'], replyTo: string | null = null): FamilySite => ({ name: 'Example Site', family, email: { replyTo } });
 
-describe('the sender’s display name', () => {
-  it('names the family for work sites, and is the site’s name alone for personal ones', () => {
-    expect(senderDisplayName(make('osbm'))).toBe('Example Site (NC OSBM)');
-    expect(senderDisplayName(make('unc'))).toBe('Example Site (UNC)');
-    expect(senderDisplayName(make('personal'))).toBe('Example Site');
+describe('the families are auth-kit’s themes', () => {
+  it('has exactly auth-kit’s three families', () => {
+    expect([...SITE_FAMILIES].sort()).toEqual(Object.keys(FAMILY_THEMES).sort());
+    expect(Object.keys(FAMILY_HELP_MAILBOX).sort()).toEqual(['osbm', 'personal', 'unc']);
+  });
+
+  it('names the family in the sender for work sites, and the site alone for personal ones', () => {
+    expect(senderDisplayName('Example Site', 'osbm')).toBe('Example Site (NC OSBM)');
+    expect(senderDisplayName('Example Site', 'unc')).toBe('Example Site (UNC)');
+    expect(senderDisplayName('Example Site', 'personal')).toBe('Example Site');
+  });
+
+  it('says who manages a work site in the footer, and names nobody on a personal one (register E4)', () => {
+    expect(siteTheme(make('osbm', 'reports-help@example.org')).footer).toBe('This site is managed by the NC Office of State Budget and Management');
+    expect(siteTheme(make('unc', 'reports-help@example.org')).footer).toBe('This site is managed by UNC-Chapel Hill');
+    expect(siteTheme(make('personal')).footer).toBeNull();
+  });
+
+  it('names the owner on the help screens of work sites only ("the {Site} team" on personal ones)', () => {
+    expect(FAMILY_NAMES_OWNER).toEqual({ osbm: true, unc: true, personal: false });
+    for (const family of SITE_FAMILIES) expect(FAMILY_THEMES[family].help.named).toBe(FAMILY_NAMES_OWNER[family]);
+    expect(signInHelpProp({ ...make('osbm'), ownerName: ' Jordan Lee ' }, 'help@example.org')).toEqual({ address: 'help@example.org', owner: 'Jordan Lee' });
+    expect(signInHelpProp({ ...make('personal'), ownerName: null }, 'help@example.org')).toEqual({ address: 'help@example.org' });
   });
 });
 
-describe('the email footer', () => {
-  it('says who runs the site', () => {
-    expect(emailFooter(make('osbm'))).toBe('Example Site is run by the NC Office of State Budget and Management.');
-    expect(emailFooter(make('unc'))).toBe('A UNC-Chapel Hill project.');
-    expect(emailFooter(make('personal'))).toBe('Made by Yokum Lab.');
+describe('the help address (register E4c; auth-kit ADR 0024)', () => {
+  it('is help@yokumlab.com for personal sites, a role-based mailbox auth-kit accepts', () => {
+    expect(FAMILY_HELP_MAILBOX.personal).toBe('help@yokumlab.com');
+    expect(helpAddressProblems(FAMILY_HELP_MAILBOX.personal)).toEqual([]);
+    expect(helpAddressFor(make('personal'))).toBe('help@yokumlab.com');
   });
 
-  it('names the UNC unit when there is one (and only for UNC)', () => {
-    expect(emailFooter(make('unc', { familyUnit: 'Example Unit' }))).toBe('A UNC-Chapel Hill Example Unit project.');
-    expect(emailFooter(make('unc', { familyUnit: '  ' }))).toBe('A UNC-Chapel Hill project.');
-    expect(emailFooter(make('personal', { familyUnit: 'Example Unit' }))).toBe('Made by Yokum Lab.');
+  it('takes a site’s own mailbox over the family’s, lowercased', () => {
+    expect(helpAddressFor(make('personal', ' Reports-Help@Example.org '))).toBe('reports-help@example.org');
   });
 
-  it('adds "Help: {help}." when the site has a help (Reply-To) address', () => {
-    const help = { replyTo: 'help@example.com' };
-    expect(emailFooter(make('osbm', help))).toBe('Example Site is run by the NC Office of State Budget and Management. Help: help@example.com.');
-    expect(emailFooter(make('unc', { ...help, familyUnit: 'Example Unit' }))).toBe('A UNC-Chapel Hill Example Unit project. Help: help@example.com.');
-    expect(emailFooter(make('personal', help))).toBe('Made by Yokum Lab. Help: help@example.com.');
-  });
-
-  it('treats a site name as text ($ patterns included)', () => {
-    expect(emailFooter({ ...make('osbm'), name: 'Costs $& More' })).toBe('Costs $& More is run by the NC Office of State Budget and Management.');
+  it('refuses a work site with no mailbox of its own while its family has none, naming the fix', () => {
+    for (const family of ['osbm', 'unc'] as const) {
+      if (FAMILY_HELP_MAILBOX[family] !== null) continue;
+      expect(() => helpAddressFor(make(family))).toThrow(/needs a help address[\s\S]*email\.replyTo/);
+      expect(helpAddressFor(make(family, 'reports-help@example.org'))).toBe('reports-help@example.org');
+    }
   });
 
   it('refuses a family that isn’t in the table', () => {
-    expect(() => emailFooter({ ...make('personal'), family: 'acme' as FamilySite['family'] })).toThrow(/isn't one of osbm, unc, personal/);
+    expect(() => helpAddressFor({ ...make('personal'), family: 'acme' as FamilySite['family'] })).toThrow(/isn't one of osbm, unc, personal/);
+  });
+
+  it('puts the help address in this site’s theme (the screens and emails read it there)', () => {
+    expect(siteTheme(site).help.address).toBe(helpAddressFor(site));
   });
 });
 
-describe('the table and this site', () => {
-  it('has exactly the three families, text only (their colors come from auth-kit/backdrops)', () => {
-    expect(Object.keys(SITE_FAMILIES).sort()).toEqual(['osbm', 'personal', 'unc']);
-    for (const family of Object.values(SITE_FAMILIES)) expect(Object.keys(family).sort()).toEqual(['cardFooter', 'emailHint', 'footer', 'ownerLine', 'senderSuffix']);
-    for (const id of Object.keys(SITE_FAMILIES)) expect(Object.keys(BACKDROP_FAMILIES)).toContain(id);
+describe('this site', () => {
+  it('has a sender name auth-kit’s pool settings accept (no < > " or line breaks) and a usable help address', () => {
+    expect(senderDisplayName(site.name, site.family)).not.toMatch(/[<>"\r\n]/);
+    expect(helpAddressProblems(helpAddressFor(site))).toEqual([]);
   });
 
-  it('gives this site a sender name auth-kit’s pool settings accept (no < > " or line breaks), and a help address or none', () => {
-    expect(senderDisplayName(site)).not.toMatch(/[<>"\r\n]/);
-    expect(site.email.replyTo === null || /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/.test(site.email.replyTo)).toBe(true);
-  });
-});
-
-describe('the sign-in card’s family text', () => {
-  it('names the owner above the heading, and says who runs the site at the foot', () => {
-    expect(ownerLine(make('osbm'))).toBe('NC Office of State Budget and Management');
-    expect(ownerLine(make('unc'))).toBe('UNC-Chapel Hill');
-    expect(ownerLine(make('unc', { familyUnit: 'Example Unit' }))).toBe('UNC-Chapel Hill · Example Unit');
-    expect(ownerLine(make('personal'))).toBe('Yokum Lab');
-    expect(cardFooter(make('osbm'))).toBe('A tool of the NC Office of State Budget and Management.');
-    expect(cardFooter(make('unc', { familyUnit: 'Example Unit' }))).toBe('A UNC-Chapel Hill Example Unit project.');
-    expect(cardFooter(make('unc'))).toBe('A UNC-Chapel Hill project.');
-    expect(cardFooter(make('personal'))).toBe('Made by Yokum Lab.');
-  });
-
-  it('treats a unit as text ($ patterns included)', () => {
-    expect(ownerLine(make('unc', { familyUnit: 'Costs $& More' }))).toBe('UNC-Chapel Hill · Costs $& More');
-  });
-});
-
-describe('the email hint', () => {
-  it('defaults from the family', () => {
-    expect(emailHintFor(make('osbm'))).toBe('name@osbm.nc.gov');
-    expect(emailHintFor(make('unc'))).toBe('name@unc.edu');
-    expect(emailHintFor(make('personal'))).toBe('name@example.com');
-  });
-
-  it('takes the site’s own hint over the family’s (a site with outside users); blank means the family’s', () => {
-    expect(emailHintFor({ ...make('osbm'), emailHint: 'name@partner.example' })).toBe('name@partner.example');
-    expect(emailHintFor({ ...make('osbm'), emailHint: '   ' })).toBe('name@osbm.nc.gov');
-    expect(emailHintFor({ ...make('unc'), emailHint: null })).toBe('name@unc.edu');
-  });
-
-  it('this site’s hint is the family’s or one it set', () => {
-    expect(emailHintFor(site)).toBe(site.emailHint?.trim() || SITE_FAMILIES[site.family].emailHint);
+  it('uses its own email hint over the family’s when it sets one', () => {
+    expect(siteTheme({ ...site, emailHint: 'name@partner.example.org' }).emailHint).toBe('name@partner.example.org');
+    expect(siteTheme({ ...site, emailHint: null }).emailHint).toBe(FAMILY_THEMES[site.family].emailHint);
   });
 });

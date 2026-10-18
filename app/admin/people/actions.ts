@@ -46,3 +46,21 @@ export async function signOutEverywhere(previous: ActionResult | null, data: For
 export async function deleteUser(previous: ActionResult | null, data: FormData): Promise<ActionResult> {
   return after(await peopleActions().forms.deleteUser(previous, data));
 }
+
+// ---- Request sites only (site.config.ts `accountCreation`): the "Pending requests" tab --------------
+// Each needs `people.manage`, checked live. Elsewhere the store isn't configured and they're refused.
+
+/** Approve: the ordinary invite (Member by default), under the name the approver checked. */
+export async function approveRequest(previous: ActionResult | null, data: FormData): Promise<ActionResult> {
+  return after(await peopleActions().forms.approveRequest(previous, data));
+}
+
+/** Decline one: removed from the queue, silently (the site sends no note unless notifyOnDecline). */
+export async function declineRequest(previous: ActionResult | null, data: FormData): Promise<ActionResult> {
+  return after(await peopleActions().forms.declineRequest(previous, data));
+}
+
+/** "Decline all shown": up to 100 in one audited step, always silent (a flood of junk requests is one click). */
+export async function declineRequests(previous: ActionResult | null, data: FormData): Promise<ActionResult> {
+  return after(await peopleActions().forms.declineRequests(previous, data));
+}

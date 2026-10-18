@@ -1,17 +1,18 @@
 /**
- * The site's own email (lib/email.ts): the family's sender name, the help mailbox as Reply-To, and
- * the family footer on invites and the owner's alerts (auth-kit's SES mailer and templates). And
- * Cognito's own email (amplify/auth/resource.ts): the same sender name and Reply-To, no footer.
- * No AWS: the mailer gets a fake SES client that records what it would send.
+ * The site's own email (lib/email.ts) matches the sign-in card (auth-kit ADR 0024; register E4a): the
+ * family's sender name, the help address in effect as Reply-To, no letterhead, and the card's footer
+ * ("{identity line}. Help: {address}."; personal sites: the help line alone) on every email, invites
+ * and alerts alike. And Cognito's own email (amplify/auth/resource.ts): the same sender name, with the
+ * help address as Reply-To. No AWS: the mailer gets a fake SES client that records what it would send.
  */
 import type { SESv2Client, SendEmailCommandInput } from '@aws-sdk/client-sesv2';
-import type { RenderedEmail } from 'auth-kit/admin';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createSiteMailer, type EmailSite, replyToAddresses, senderMailbox, withFooter, withFooterText } from '@/lib/email';
+import { createSiteMailer, inCardLayout, type MailSite, senderMailbox } from '@/lib/email';
 import { site } from '@/site.config';
 
-const personal: EmailSite = { name: 'Example Site', family: 'personal', familyUnit: null, email: { fromAddress: 'noreply@example.com', replyTo: 'help@example.com' } };
-const unc: EmailSite = { ...personal, family: 'unc', familyUnit: 'Example Unit' };
+const personal: MailSite = { name: 'Example Site', family: 'personal', email: { fromAddress: 'noreply@example.com', replyTo: 'help@example.com' } };
+const unc: MailSite = { ...personal, family: 'unc' };
+const signInUrl = 'https://www.example.com/sign-in';
 
 function fakeSes() {
   const sent: SendEmailCommandInput[] = [];
@@ -19,23 +20,11 @@ function fakeSes() {
   return { client, sent };
 }
 
-describe('the footer wrappers', () => {
-  it('append the family footer after a blank line in text', () => {
-    expect(withFooterText('Hello.', personal)).toBe('Hello.\n\nMade by Yokum Lab. Help: help@example.com.');
-  });
+const textOf = (input: SendEmailCommandInput | undefined) => input?.Content?.Simple?.Body?.Text?.Data ?? '';
+const htmlOf = (input: SendEmailCommandInput | undefined) => input?.Content?.Simple?.Body?.Html?.Data ?? '';
 
-  it('append it to the HTML as an escaped paragraph, and leave the subject alone', () => {
-    const email: RenderedEmail = { subject: 'Hi', text: 'Body', html: '<p>Body</p>' };
-    const sneaky: EmailSite = { ...personal, email: { ...personal.email, replyTo: '"<script>"@example.com' } };
-    const wrapped = withFooter(email, sneaky);
-    expect(wrapped.subject).toBe('Hi');
-    expect(wrapped.text).toBe('Body\n\nMade by Yokum Lab. Help: "<script>"@example.com.');
-    expect(wrapped.html).toBe('<p>Body</p>\n<p>Made by Yokum Lab. Help: &quot;&lt;script&gt;&quot;@example.com.</p>');
-  });
-});
-
-describe('the sender and Reply-To', () => {
-  it('use the family’s display name, quoted when RFC 5322 needs it, encoded when it isn’t ASCII', () => {
+describe('the sender', () => {
+  it('uses the family’s display name, quoted when RFC 5322 needs it, encoded when it isn’t ASCII', () => {
     expect(senderMailbox(personal)).toBe('Example Site <noreply@example.com>');
     expect(senderMailbox(unc)).toBe('"Example Site (UNC)" <noreply@example.com>');
     expect(senderMailbox({ ...personal, name: 'Say "hi"' })).toBe('"Say \\"hi\\"" <noreply@example.com>');
@@ -43,40 +32,64 @@ describe('the sender and Reply-To', () => {
     expect(() => senderMailbox({ ...personal, name: 'Two\nlines' })).toThrow(/line breaks/);
   });
 
-  it('carry the help mailbox, or nothing when there isn’t one (never noreply)', () => {
-    expect(replyToAddresses(personal)).toEqual(['help@example.com']);
-    expect(replyToAddresses({ ...personal, email: { ...personal.email, replyTo: null } })).toEqual([]);
-  });
-
-  it('default to this site’s config', () => {
+  it('defaults to this site’s config', () => {
     expect(senderMailbox()).toBe(senderMailbox(site));
-    expect(replyToAddresses()).toEqual(site.email.replyTo ? [site.email.replyTo] : []);
   });
 });
 
-describe('invites and the owner’s alerts (createSiteMailer)', () => {
+describe('the card layout (inCardLayout)', () => {
+  it('ends with the help line alone on a personal site, and the identity line first on a work site, in text and HTML', () => {
+    const plain = { subject: 'Hello', text: 'First line.\nSecond line.' };
+    const mine = inCardLayout(plain, { siteName: 'Example Site', theme: 'personal', signInUrl, helpEmail: 'help@example.com' });
+    expect(mine.text).toBe('First line.\n\nSecond line.\n\nHelp: help@example.com.');
+    expect(mine.html).toContain('Help: help@example.com.');
+    expect(mine.html).not.toContain('This site is managed by');
+    const work = inCardLayout(plain, { siteName: 'Example Site', theme: 'unc', signInUrl, helpEmail: 'help@example.com' });
+    expect(work.text).toMatch(/This site is managed by UNC-Chapel Hill\. Help: help@example\.com\.$/);
+    expect(work.preheader).toBe('First line.');
+  });
+
+  it('escapes what it lays out', () => {
+    const laid = inCardLayout({ subject: 'Hi', text: '<script>alert(1)</script>' }, { siteName: 'Example Site', theme: 'personal', signInUrl, helpEmail: 'help@example.com' });
+    expect(laid.html).not.toContain('<script>alert');
+    expect(laid.html).toContain('&lt;script&gt;');
+  });
+});
+
+describe('the site’s mailer (createSiteMailer)', () => {
   const expiresAt = new Date('2026-10-24T21:00:00Z');
 
-  it('send the invite from the family’s sender, with Reply-To and the footer in both parts', async () => {
+  it('sends the invite from the family’s sender, with the help address as Reply-To and the card’s footer', async () => {
     const ses = fakeSes();
-    await createSiteMailer({ region: 'us-east-1', client: ses.client }, unc).sendInvite({
+    await createSiteMailer({ region: 'us-east-1', client: ses.client, help: 'help@example.com', signInUrl }, unc).sendInvite({
       email: 'new.person@example.com',
       siteName: unc.name,
-      signInUrl: 'https://www.example.com/sign-in',
+      signInUrl,
       expiresAt,
     });
     const [input] = ses.sent;
     expect(input?.FromEmailAddress).toBe('"Example Site (UNC)" <noreply@example.com>');
     expect(input?.ReplyToAddresses).toEqual(['help@example.com']);
     expect(input?.Destination?.ToAddresses).toEqual(['new.person@example.com']);
-    const body = input?.Content?.Simple?.Body;
-    expect(body?.Text?.Data).toMatch(/You've been invited to Example Site\.[\s\S]*\n\nA UNC-Chapel Hill Example Unit project\. Help: help@example\.com\.$/);
-    expect(body?.Html?.Data).toMatch(/<p>A UNC-Chapel Hill Example Unit project\. Help: help@example\.com\.<\/p>$/);
+    expect(textOf(input)).toMatch(/This site is managed by UNC-Chapel Hill\. Help: help@example\.com\.$/);
+    expect(htmlOf(input)).toContain('This site is managed by UNC-Chapel Hill. Help: help@example.com.');
   });
 
-  it('send the Super admin grant alert the same way, to the owner', async () => {
+  it('reads the help address in effect for each email (a Super admin’s override shows at once)', async () => {
     const ses = fakeSes();
-    await createSiteMailer({ region: 'us-east-1', client: ses.client }, personal).superadminGranted({
+    let address = 'help@example.com';
+    const help = { effective: async () => ({ address, source: 'config' as const }) };
+    const mailer = createSiteMailer({ region: 'us-east-1', client: ses.client, help, signInUrl }, personal);
+    await mailer.sendInvite({ email: 'a@example.com', siteName: personal.name, signInUrl, expiresAt });
+    address = 'desk@example.com';
+    await mailer.sendInvite({ email: 'b@example.com', siteName: personal.name, signInUrl, expiresAt });
+    expect(ses.sent.map((i) => i.ReplyToAddresses)).toEqual([['help@example.com'], ['desk@example.com']]);
+    expect(textOf(ses.sent[1])).toMatch(/Help: desk@example\.com\.$/);
+  });
+
+  it('lays the Super admin grant alert out like the card, with the footer, to the owner', async () => {
+    const ses = fakeSes();
+    await createSiteMailer({ region: 'us-east-1', client: ses.client, help: 'help@example.com', signInUrl }, personal).superadminGranted({
       siteName: personal.name,
       owners: [{ sub: 'a', email: 'owner@example.com' }],
       grantedTo: { sub: 'b', email: 'deputy@example.com' },
@@ -88,28 +101,21 @@ describe('invites and the owner’s alerts (createSiteMailer)', () => {
     expect(input?.FromEmailAddress).toBe('Example Site <noreply@example.com>');
     expect(input?.ReplyToAddresses).toEqual(['help@example.com']);
     expect(input?.Destination?.ToAddresses).toEqual(['owner@example.com']);
-    expect(input?.Content?.Simple?.Body?.Text?.Data).toMatch(/is now a Super admin|a Super admin of Example Site/);
-    expect(input?.Content?.Simple?.Body?.Text?.Data).toMatch(/\n\nMade by Yokum Lab\. Help: help@example\.com\.$/);
-    expect(input?.Content?.Simple?.Body?.Html?.Data).toMatch(/<p>Made by Yokum Lab\. Help: help@example\.com\.<\/p>$/);
+    expect(textOf(input)).toMatch(/a Super admin of Example Site[\s\S]*\n\nHelp: help@example\.com\.$/);
+    expect(htmlOf(input)).toMatch(/^<!doctype html>/);
   });
 
-  it('send the ownership transfer alert to both owners, with the footer', async () => {
+  it('sends the ownership transfer alert to both owners, and the unused-owner-invite warning, with the footer', async () => {
     const ses = fakeSes();
-    await createSiteMailer({ region: 'us-east-1', client: ses.client }, personal).ownershipTransferred({
+    const mailer = createSiteMailer({ region: 'us-east-1', client: ses.client, help: 'help@example.com', signInUrl }, personal);
+    await mailer.ownershipTransferred({
       siteName: personal.name,
       previousOwner: { sub: 'a', email: 'owner@example.com' },
       newOwner: { sub: 'b', email: 'next.owner@example.com' },
       reason: 'Handing the site over',
       at: expiresAt,
     });
-    const [input] = ses.sent;
-    expect(input?.Destination?.ToAddresses).toEqual(['owner@example.com', 'next.owner@example.com']);
-    expect(input?.Content?.Simple?.Body?.Text?.Data).toMatch(/transferred ownership of Example Site[\s\S]*\n\nMade by Yokum Lab\. Help: help@example\.com\.$/);
-  });
-
-  it('send the unused-owner-invite warning with the footer too', async () => {
-    const ses = fakeSes();
-    await createSiteMailer({ region: 'us-east-1', client: ses.client }, personal).ownerInviteUnused({
+    await mailer.ownerInviteUnused({
       siteName: personal.name,
       owner: { sub: 'a', email: 'owner@example.com' },
       to: { email: 'owner@example.com', kind: 'owner' },
@@ -117,15 +123,31 @@ describe('invites and the owner’s alerts (createSiteMailer)', () => {
       expiredAt: new Date('2026-10-08T00:00:00Z'),
       at: expiresAt,
     });
-    expect(ses.sent[0]?.Content?.Simple?.Body?.Text?.Data).toMatch(/\n\nMade by Yokum Lab\. Help: help@example\.com\.$/);
+    expect(ses.sent[0]?.Destination?.ToAddresses).toEqual(['owner@example.com', 'next.owner@example.com']);
+    for (const input of ses.sent) expect(textOf(input)).toMatch(/\n\nHelp: help@example\.com\.$/);
   });
 
-  it('send no Reply-To header when the site has no help address', async () => {
+  it('gives a project Manager’s invite (which carries no theme or help address) the family’s footer too', async () => {
     const ses = fakeSes();
-    const noHelp: EmailSite = { ...personal, email: { ...personal.email, replyTo: null } };
-    await createSiteMailer({ region: 'us-east-1', client: ses.client }, noHelp).sendInvite({ email: 'x@example.com', siteName: 'Example Site', signInUrl: 'https://www.example.com/sign-in', expiresAt });
-    expect(ses.sent[0]).not.toHaveProperty('ReplyToAddresses');
-    expect(ses.sent[0]?.Content?.Simple?.Body?.Text?.Data).toMatch(/\n\nMade by Yokum Lab\.$/);
+    await createSiteMailer({ region: 'us-east-1', client: ses.client, help: 'help@example.com', signInUrl }, unc).sendInvite({
+      email: 'new.person@example.com',
+      siteName: unc.name,
+      signInUrl,
+      expiresAt,
+      item: { noun: 'project', name: 'Roads 2027', role: 'contributor', invitedBy: 'Pat Lee' },
+    });
+    expect(textOf(ses.sent[0])).toMatch(/Roads 2027[\s\S]*This site is managed by UNC-Chapel Hill\. Help: help@example\.com\.$/);
+  });
+
+  it('sends an already-rendered email (account notices) as is, from the site’s sender', async () => {
+    const ses = fakeSes();
+    await createSiteMailer({ region: 'us-east-1', client: ses.client, help: 'help@example.com', signInUrl }, personal).sendEmail({
+      to: ['someone@example.com'],
+      email: { subject: 'Hi', text: 'Body', html: '<p>Body</p>' },
+    });
+    expect(ses.sent[0]?.FromEmailAddress).toBe('Example Site <noreply@example.com>');
+    expect(ses.sent[0]?.ReplyToAddresses).toEqual(['help@example.com']);
+    expect(textOf(ses.sent[0])).toBe('Body');
   });
 });
 
@@ -135,15 +157,18 @@ describe('Cognito’s own email (amplify/auth/resource.ts)', () => {
   });
 
   // Importing the resource runs auth-kit's preset validation, so this also proves the pool accepts
-  // the family's sender name. (Amplify allows one defineAuth per process: one import per file.)
-  it('comes from the family’s sender name, with the help mailbox as Reply-To', async () => {
+  // the family's sender name and the help address. (Amplify allows one defineAuth per process: one
+  // import per file.)
+  it('comes from the family’s sender name, with the help address as Reply-To', async () => {
     vi.resetModules();
     vi.doMock('@/site.config', async (importOriginal) => {
       const actual = await importOriginal<typeof import('@/site.config')>();
-      const email = { fromAddress: 'noreply@example.com', replyTo: 'help@example.com' };
-      return { ...actual, site: { ...actual.site, name: 'Example Site', family: 'unc', familyUnit: null, email } };
+      const email = { fromAddress: 'noreply@example.com', replyTo: 'reports-help@example.org' };
+      return { ...actual, site: { ...actual.site, name: 'Example Site', family: 'unc', email } };
     });
     const { authOptions } = await import('@/amplify/auth/resource');
-    expect(authOptions.email).toEqual({ fromAddress: 'noreply@example.com', fromName: 'Example Site (UNC)', replyTo: 'help@example.com' });
+    expect(authOptions.email).toEqual({ fromAddress: 'noreply@example.com', fromName: 'Example Site (UNC)', replyTo: 'reports-help@example.org' });
+    expect(authOptions.accountCreation).toEqual({ mode: 'invite' });
+    expect(authOptions.codeLifetimeMinutes).toBe(3);
   });
 });

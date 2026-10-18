@@ -32,6 +32,16 @@ export default async function AdminHome() {
           </h2>
           <p className="muted">Every people and content change: who, to whom, what, before and after, why, and when. Nobody can edit it.</p>
         </section>
+        {user.capabilities.has('settings.security') && (
+          <section className="card">
+            <h2>
+              <Link href="/admin/settings">Settings</Link>
+            </h2>
+            <p className="muted">
+              Sign-in help: the address the sign-in card and every email send people to. Change it without a deploy; the owner and every Super admin are told.
+            </p>
+          </section>
+        )}
       </div>
     </div>
   );

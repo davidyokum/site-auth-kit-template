@@ -10,21 +10,40 @@
  *
  * When you add a page or route: add a row here. When you add a role: add a persona in personas.ts
  * and its expectation on every row.
+ *
+ * Two personas need no column: `codeOnlyMember` (only emailed codes) gets auth-kit's default, what an
+ * anonymous visitor gets where that's a success or a redirect (to the chooser page, here) and 403
+ * elsewhere, except on the chooser page itself; and on sign-up sites `newMember` gets a member's
+ * answer on every row (a second member's on project routes), and auth-kit refuses a row that would
+ * let it do more.
+ *
+ * The account-creation rows follow site.config.ts's `accountCreation`: sign-up sites have /sign-up and
+ * its route, request sites /request-access and its route, and invite-only sites neither (the build
+ * doesn't have them; lib/account-modes.ts).
  */
 import { type MatrixRoute, type PersonaDefinition, assertAuthMatrix, routesFromNextBuild, tamperToken } from 'auth-kit/testing';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, inject, it } from 'vitest';
-import { MATRIX_PERSONAS, type MatrixPersonaKey, type MatrixPersonaName } from './personas';
+import { takesRequests, takesSignUps } from '@/lib/account-modes';
+import { site } from '@/site.config';
+import { MATRIX_PERSONAS, SIGN_UP_SITE, type MatrixPersonaKey, type MatrixPersonaName } from './personas';
 
 const ROOT = join(import.meta.dirname, '..', '..');
 // From global-setup.ts (auth-kit's startMatrixServer): each persona's Amplify session cookies and tokens.
 const { baseUrl, personas } = inject('matrix');
 
-type Expect = Record<MatrixPersonaName, number>;
-const persona = (name: MatrixPersonaKey): PersonaDefinition => ({ headers: { cookie: personas[name].cookie } });
+/** Every persona's expected status, but the two auth-kit fills in (see the header). */
+type Expect = Record<Exclude<MatrixPersonaName, 'codeOnlyMember' | 'newMember'>, number> & Partial<Record<'codeOnlyMember' | 'newMember', number>>;
+/** This persona's session, which global-setup.ts made (`newMember` only on sign-up sites). */
+const session = (name: MatrixPersonaKey) => {
+  const found = personas[name];
+  if (!found) throw new Error(`auth matrix: no persona "${name}" on this site.`);
+  return found;
+};
+const persona = (name: MatrixPersonaKey): PersonaDefinition => ({ headers: { cookie: session(name).cookie } });
 const send = (path: string, init: RequestInit & { as?: MatrixPersonaKey } = {}) => {
   const headers = new Headers(init.headers);
-  if (init.as) headers.set('cookie', personas[init.as].cookie);
+  if (init.as) headers.set('cookie', session(init.as).cookie);
   return fetch(new URL(path, baseUrl), { ...init, headers, redirect: 'manual' });
 };
 
@@ -35,21 +54,31 @@ const send = (path: string, init: RequestInit & { as?: MatrixPersonaKey } = {}) 
 
 /** Every admin role, answering the same. */
 const ADMINS = (status: number) => ({ adminView: status, adminContent: status, admin: status, superadmin: status, owner: status });
+/** Members, with or without a role on project A, answering the same. */
+const MEMBERS = (status: number) => ({ member: status, otherMember: status, manager: status, reader: status });
 
 /** Public pages: everyone. */
 const PUBLIC: Expect = {
-  anonymous: 200, member: 200, otherMember: 200, ...ADMINS(200),
+  anonymous: 200, ...MEMBERS(200), ...ADMINS(200),
   noAuthenticator: 200, demotedAdmin: 200, disabledAdmin: 200, revokedSession: 200,
 };
 
 /** Pages any signed-in person may open (requireUser). */
 const SIGNED_IN_PAGE: Expect = {
-  anonymous: 307, member: 200, otherMember: 200, ...ADMINS(200),
+  anonymous: 307, ...MEMBERS(200), ...ADMINS(200),
   noAuthenticator: 307, // → /account/authenticator
   demotedAdmin: 200, // not an admin page: the token's groups apply until it's refreshed (≤ 60 min)
   disabledAdmin: 307, // Cognito refuses a disabled account's token at the factor check
   revokedSession: 307, // ...and a signed-out-everywhere session's
+  // codeOnlyMember: 307 (auth-kit's default) → /account/sign-in-method
 };
+
+/**
+ * "Choose how you'll sign in next time" (requireUser with allowFirstCredentialEnrollment): the one page
+ * an account with only emailed codes may open. Everyone signed in may; a password user without an
+ * authenticator still goes to set one up first.
+ */
+const CHOOSER_PAGE: Expect = { ...SIGNED_IN_PAGE, codeOnlyMember: 200 };
 
 /**
  * The authenticator setup page lets in a password user without an authenticator. It skips the
@@ -71,6 +100,8 @@ const AUTHENTICATOR_PAGE: Expect = {
 const PROJECT_PAGE: Expect = {
   ...SIGNED_IN_PAGE,
   otherMember: 404, // the standard's second-member check: no role on it, so "not found"
+  manager: 200, // its Manager
+  reader: 200, // its Reader
   adminView: 200, // the site role is a floor on every project: Admin – view only sees it
   adminContent: 200,
   demotedAdmin: 200, // the token's groups give the floor until it's refreshed (≤ 60 min); edits check live
@@ -78,7 +109,7 @@ const PROJECT_PAGE: Expect = {
 
 /** API routes any signed-in person may call. */
 const SIGNED_IN_API: Expect = {
-  anonymous: 401, member: 200, otherMember: 200, ...ADMINS(200),
+  anonymous: 401, ...MEMBERS(200), ...ADMINS(200),
   noAuthenticator: 403, // mfa_enrollment_required
   demotedAdmin: 200,
   disabledAdmin: 401, // account_disabled
@@ -95,7 +126,7 @@ const PROJECT_API: Expect = { ...SIGNED_IN_API, otherMember: 404 };
  */
 const CREATE_PROJECT_API: Expect = {
   ...SIGNED_IN_API,
-  member: 403, otherMember: 403, adminView: 403, adminContent: 403,
+  ...MEMBERS(403), adminView: 403, adminContent: 403,
   admin: 201, superadmin: 201, owner: 201,
   demotedAdmin: 403, // read live: Cognito says member now
 };
@@ -106,6 +137,7 @@ const CREATE_PROJECT_API: Expect = {
  */
 const EDIT_PROJECT_API: Expect = {
   ...PROJECT_API,
+  reader: 403, // sees it, can't edit it
   adminView: 403,
   demotedAdmin: 404, // live: no admin role any more, and no role on the project
 };
@@ -117,6 +149,7 @@ const EDIT_PROJECT_API: Expect = {
 const GRANT_API: Expect = {
   ...PROJECT_API,
   member: 403, // a Contributor can't share it
+  reader: 403, // nor can a Reader; its Manager can
   adminView: 403,
   adminContent: 403,
   demotedAdmin: 404, // live
@@ -127,12 +160,25 @@ const GRANT_API: Expect = {
  * admin area, Admin – view only included; what each may change is the People actions' business.
  */
 const ADMIN_PAGE: Expect = {
-  anonymous: 307, member: 404, otherMember: 404, ...ADMINS(200),
+  anonymous: 307, ...MEMBERS(404), ...ADMINS(200),
   noAuthenticator: 307,
   demotedAdmin: 404, // live re-read: Cognito says member now, so the admin area refuses at once
   disabledAdmin: 307,
   revokedSession: 307,
 };
+
+/**
+ * Settings (requireCan('settings.security', { live: true })): Super admins and the owner. Other admins
+ * get the admin area, but not this page.
+ */
+const SETTINGS_PAGE: Expect = { ...ADMIN_PAGE, adminView: 404, adminContent: 404, admin: 404 };
+
+/**
+ * The account-creation routes (public on purpose): the same answer for every address and every
+ * persona, at least 800 ms later. Each row posts an address that already has an account, which gets
+ * an email (none is sent under the matrix) instead of a different answer.
+ */
+const ACCOUNT_ROUTE: Expect = { ...PUBLIC };
 
 // ---- The matrix -------------------------------------------------------------------------------
 
@@ -144,9 +190,11 @@ beforeAll(async () => {
   const created = await send('/api/projects', { as: 'admin', method: 'POST', ...json({ name: 'Project A', summary: 'Seeded by the auth matrix.' }) });
   expect(created.status, await created.clone().text()).toBe(201);
   projectId = ((await created.json()) as { project: { id: string } }).project.id;
-  // ...and makes the member a Contributor on it. The second member gets nothing.
-  const granted = await send(`/api/projects/${projectId}/access`, { as: 'admin', method: 'PUT', ...json({ email: personas.member.email, role: 'contributor' }) });
-  expect(granted.status, await granted.clone().text()).toBe(200);
+  // ...and gives the member Contributor, the manager Manager, and the reader Reader. The second member gets nothing.
+  for (const [who, role] of [['member', 'contributor'], ['manager', 'manager'], ['reader', 'reader']] as const) {
+    const granted = await send(`/api/projects/${projectId}/access`, { as: 'admin', method: 'PUT', ...json({ email: session(who).email, role }) });
+    expect(granted.status, await granted.clone().text()).toBe(200);
+  }
 });
 
 describe('auth matrix', () => {
@@ -154,14 +202,17 @@ describe('auth matrix', () => {
     const routes: MatrixRoute[] = [
       { path: '/', expect: PUBLIC },
       { path: '/sign-in', expect: PUBLIC },
+      { path: '/signed-out', expect: PUBLIC },
       { path: '/account', expect: SIGNED_IN_PAGE },
       { path: '/account/authenticator', expect: AUTHENTICATOR_PAGE },
+      { path: '/account/sign-in-method', expect: CHOOSER_PAGE },
       { path: '/app', expect: SIGNED_IN_PAGE },
       { path: '/app/projects', expect: SIGNED_IN_PAGE },
       { path: '/app/projects/:id', expect: PROJECT_PAGE },
       { path: '/admin', expect: ADMIN_PAGE },
       { path: '/admin/people', expect: ADMIN_PAGE },
       { path: '/admin/activity', expect: ADMIN_PAGE },
+      { path: '/admin/settings', expect: SETTINGS_PAGE },
       { method: 'GET', path: '/api/projects', expect: SIGNED_IN_API },
       {
         method: 'POST',
@@ -174,8 +225,27 @@ describe('auth matrix', () => {
       { method: 'PATCH', path: '/api/projects/:id', headers: { origin: baseUrl }, body: { summary: 'Edited by the auth matrix.' }, expect: EDIT_PROJECT_API },
       { method: 'GET', path: '/api/projects/:id/access', expect: PROJECT_API },
       // Re-giving the member the role they have: changes nothing, so every persona sees the same project.
-      { method: 'PUT', path: '/api/projects/:id/access', headers: { origin: baseUrl }, body: { email: personas.member.email, role: 'contributor' }, expect: GRANT_API },
+      { method: 'PUT', path: '/api/projects/:id/access', headers: { origin: baseUrl }, body: { email: session('member').email, role: 'contributor' }, expect: GRANT_API },
+      ...(takesSignUps(site.accountCreation)
+        ? [
+            { path: '/sign-up', expect: PUBLIC },
+            { method: 'POST', path: '/api/auth/sign-up', headers: { origin: baseUrl }, body: { email: session('member').email }, expect: ACCOUNT_ROUTE },
+          ]
+        : []),
+      ...(takesRequests(site.accountCreation)
+        ? [
+            { path: '/request-access', expect: PUBLIC },
+            {
+              method: 'POST',
+              path: '/api/auth/request-access',
+              headers: { origin: baseUrl },
+              body: { name: 'Matrix Requester', email: session('member').email, reason: 'Checking every persona gets the same answer.' },
+              expect: ACCOUNT_ROUTE,
+            },
+          ]
+        : []),
     ];
+    const personaNames = Object.keys(MATRIX_PERSONAS) as MatrixPersonaKey[];
 
     const results = await assertAuthMatrix({
       request: (request) => fetch(request, { redirect: 'manual' }),
@@ -183,13 +253,15 @@ describe('auth matrix', () => {
       appRoutes: routesFromNextBuild(join(ROOT, '.next')),
       personas: {
         anonymous: {},
-        ...Object.fromEntries((Object.keys(MATRIX_PERSONAS) as MatrixPersonaKey[]).map((name) => [name, persona(name)])),
+        ...Object.fromEntries(personaNames.map((name) => [name, persona(name)])),
       },
       params: { id: projectId },
       routes,
+      // Sign-up sites: auth-kit requires newMember and holds it to a member's answers.
+      signUpSite: SIGN_UP_SITE,
     });
-    // 16 routes × 12 personas × 2 passes.
-    expect(results.length).toBe(routes.length * 12 * 2);
+    // Every route × every persona (anonymous too) × 2 passes.
+    expect(results.length).toBe(routes.length * (personaNames.length + 1) * 2);
   });
 });
 
@@ -204,7 +276,7 @@ describe('what the matrix rows can’t express', () => {
     expect(noAuthenticator.headers.get('location')).toMatch(/\/account\/authenticator$/);
   });
 
-  it('lists are filtered on the server: the Contributor and site admins see project A; the second member never does', async () => {
+  it('lists are filtered on the server: project A’s Manager, Contributor, Reader, and site admins see it; the second member never does', async () => {
     const list = async (as: MatrixPersonaKey) => {
       const response = await send('/api/projects', { as });
       expect(response.status).toBe(200);
@@ -213,6 +285,8 @@ describe('what the matrix rows can’t express', () => {
     const member = await list('member');
     expect(member.scope).toBe('mine');
     expect(member.projects.find((p) => p.id === projectId)).toMatchObject({ role: 'contributor' });
+    expect((await list('manager')).projects.find((p) => p.id === projectId)).toMatchObject({ role: 'manager' });
+    expect((await list('reader')).projects.find((p) => p.id === projectId)).toMatchObject({ role: 'reader' });
     expect((await list('otherMember')).projects.map((p) => p.id)).not.toContain(projectId);
     for (const admin of ['adminView', 'adminContent', 'admin', 'owner'] as const) {
       const seen = await list(admin);
@@ -222,23 +296,29 @@ describe('what the matrix rows can’t express', () => {
     expect((await list('admin')).projects.find((p) => p.id === projectId)).toMatchObject({ role: 'manager' });
   });
 
-  it('who has access: the admin is Manager, the member Contributor; the page shows the panel in the project’s words', async () => {
+  it('who has access: the admin and the manager are Managers, the member Contributor, the reader Reader; the page shows the panel in the project’s words', async () => {
     const access = await send(`/api/projects/${projectId}/access`, { as: 'member' });
     expect(access.status).toBe(200);
     const body = (await access.json()) as { members: { sub: string; role: string }[]; managers: number };
-    expect(body.managers).toBe(1);
-    expect(body.members.map((m) => [m.sub, m.role])).toEqual([
-      [personas.admin.sub, 'manager'],
-      [personas.member.sub, 'contributor'],
-    ]);
+    expect(body.managers).toBe(2);
+    const roles = Object.fromEntries(body.members.map((m) => [m.sub, m.role]));
+    expect(roles).toEqual({
+      [session('admin').sub]: 'manager',
+      [session('manager').sub]: 'manager',
+      [session('member').sub]: 'contributor',
+      [session('reader').sub]: 'reader',
+    });
     const page = await send(`/app/projects/${projectId}`, { as: 'admin' });
     const html = await page.text();
     expect(html).toContain('Who has access to this project');
     expect(html).toContain('Share this project');
-    // The Contributor sees the list but can't share it.
-    const contributorPage = await (await send(`/app/projects/${projectId}`, { as: 'member' })).text();
-    expect(contributorPage).toContain('Who has access to this project');
-    expect(contributorPage).not.toContain('Share this project');
+    // Its Manager (a member with no site role) can share it; the Contributor and the Reader see the list but can't.
+    expect(await (await send(`/app/projects/${projectId}`, { as: 'manager' })).text()).toContain('Share this project');
+    for (const who of ['member', 'reader'] as const) {
+      const html = await (await send(`/app/projects/${projectId}`, { as: who })).text();
+      expect(html, who).toContain('Who has access to this project');
+      expect(html, who).not.toContain('Share this project');
+    }
   });
 
   it('the Activity page names project A and its people, never an ID (register rule C5)', async () => {
@@ -246,15 +326,29 @@ describe('what the matrix rows can’t express', () => {
     // What the page shows: its text, without scripts (the client component's props travel in them).
     const shown = html.replace(/<script\b[\s\S]*?<\/script>/g, ' ').replace(/<[^>]+>/g, ' ');
     expect(shown).toContain('the project “Project A”');
-    expect(shown).toContain(personas.member.email);
+    expect(shown).toContain(session('member').email);
     expect(shown).not.toContain(projectId);
-    for (const name of Object.keys(personas) as MatrixPersonaKey[]) expect(shown, name).not.toContain(personas[name].sub);
+    for (const name of Object.keys(personas) as MatrixPersonaKey[]) expect(shown, name).not.toContain(session(name).sub);
   });
 
   it('every item keeps a Manager: the only Manager can’t demote themselves through the API', async () => {
-    const response = await send(`/api/projects/${projectId}/access`, { as: 'admin', method: 'PUT', ...json({ email: personas.admin.email, role: 'reader' }) });
+    // A project of its own, whose only Manager is the admin who made it.
+    const created = await send('/api/projects', { as: 'admin', method: 'POST', ...json({ name: 'One-Manager project' }) });
+    expect(created.status).toBe(201);
+    const id = ((await created.json()) as { project: { id: string } }).project.id;
+    const response = await send(`/api/projects/${id}/access`, { as: 'admin', method: 'PUT', ...json({ email: session('admin').email, role: 'reader' }) });
     expect(response.status).toBe(409);
     expect((await response.json()) as { guardrail: string }).toMatchObject({ guardrail: 'last_manager' });
+  });
+
+  it('an account with only emailed codes is sent to the chooser page, and refused by APIs (first credential required)', async () => {
+    const page = await send('/app', { as: 'codeOnlyMember' });
+    expect(page.status).toBe(307);
+    expect(page.headers.get('location')).toMatch(/\/account\/sign-in-method$/);
+    const api = await send('/api/projects', { as: 'codeOnlyMember' });
+    expect(api.status).toBe(403);
+    expect(((await api.json()) as { error: string }).error).toBe('first_credential_required');
+    expect((await send('/account/sign-in-method', { as: 'codeOnlyMember' })).status).toBe(200);
   });
 
   it('a state change from another origin is refused (403 origin_mismatch)', async () => {
@@ -282,12 +376,12 @@ describe('what the matrix rows can’t express', () => {
     expect(form.status).toBe(415);
     const empty = await send('/api/projects', { as: 'admin', method: 'POST', ...json({ name: '   ' }) });
     expect(empty.status).toBe(400);
-    const badRole = await send(`/api/projects/${projectId}/access`, { as: 'admin', method: 'PUT', ...json({ email: personas.otherMember.email, role: 'owner' }) });
+    const badRole = await send(`/api/projects/${projectId}/access`, { as: 'admin', method: 'PUT', ...json({ email: session('otherMember').email, role: 'owner' }) });
     expect(badRole.status).toBe(400);
   });
 
   it('a forged token (groups edited, signature kept) is refused everywhere', async () => {
-    const forged = tamperToken(personas.member.accessToken, { 'cognito:groups': ['owner'] });
+    const forged = tamperToken(session('member').accessToken, { 'cognito:groups': ['owner'] });
     const response = await fetch(new URL('/api/projects', baseUrl), { headers: { authorization: `Bearer ${forged}` } });
     expect(response.status).toBe(401);
     const page = await fetch(new URL('/admin/people', baseUrl), { headers: { authorization: `Bearer ${forged}` }, redirect: 'manual' });

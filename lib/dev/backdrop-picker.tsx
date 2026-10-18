@@ -9,16 +9,25 @@
  */
 import { BackdropPicker } from 'auth-kit/backdrops/picker';
 import { SignIn } from 'auth-kit/client';
-import { AuthCard } from '@/components/auth-card';
 import { siteBackdrop } from '@/lib/backdrop';
+import { signInHelpProp, siteTheme } from '@/lib/theme';
 import { site } from '@/site.config';
-import { emailHintFor, type SiteFamily } from '@/site.families';
+import { helpAddressFor, type SiteFamily } from '@/site.families';
 
+/** The real sign-in card (auth-kit's `SignIn` is the whole card), themed for the family being previewed. */
 function renderCard(family: SiteFamily) {
+  const help = helpAddressFor(site);
+  const theme = siteTheme({ ...site, family, email: { ...site.email, replyTo: help } });
   return (
-    <AuthCard family={family}>
-      <SignIn siteName={site.name} passkeysEnabled={site.passkeys !== false} emailHint={emailHintFor({ ...site, family })} navigate={() => undefined} />
-    </AuthCard>
+    <SignIn
+      siteName={site.name}
+      theme={theme}
+      help={signInHelpProp(site, help)}
+      passkeysEnabled={site.passkeys !== false}
+      accountCreation={site.accountCreation}
+      codeLifetimeMinutes={site.codeLifetimeMinutes}
+      navigate={() => undefined}
+    />
   );
 }
 

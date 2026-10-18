@@ -1,32 +1,42 @@
 /**
- * Sign in (always public). auth-kit's `SignIn`: passkey first, "Use a password instead" (password,
- * then the authenticator code), "Email me a code instead". It handles every step these pools
- * return, then sends password users without an authenticator to set one up, offers a passkey once,
- * and returns through `safeRedirect` (same-site paths only). `?reauth=1` is step-up: a risky action
- * asked for a fresh sign-in.
+ * Sign in (always public). auth-kit's `SignIn` is the whole card, in the approved words (ADR 0024):
+ * email first, then "Use your passkey" (or, before passkeys are on, "Enter your password"), with "Use
+ * a password instead" and "Email me a code instead" always offered; "Trouble signing in?" and its
+ * help screens; the line saying how this site gives out accounts (`accountCreation`); and the family's
+ * footer. It handles every step these pools return, then sends a password user without an
+ * authenticator to set one up, requires the first credential after an invite or a sign-up, and
+ * returns through `safeRedirect` (same-site paths only). `?reauth=1` is step-up.
  *
- * The card sits on the site's backdrop (components/auth-scene.tsx); the email field's placeholder is
- * the site's email hint (site.config.ts `emailHint`, else the family's).
+ * The help address is read here, on the server, on every request, so a Super admin's override
+ * (Admin → Settings → "Sign-in help") shows at once. The card sits on the site's backdrop.
  */
 import { SignIn } from 'auth-kit/client';
 import type { Metadata } from 'next';
 import { AuthScene } from '@/components/auth-scene';
+import { effectiveHelp } from '@/lib/accounts';
+import { passkeyPrompt } from '@/lib/passkeys';
+import { signInHelpProp, siteTheme } from '@/lib/theme';
 import { site } from '@/site.config';
-import { emailHintFor } from '@/site.families';
 
 export const metadata: Metadata = { title: 'Sign in' };
+export const dynamic = 'force-dynamic';
 
 export default async function SignInPage({ searchParams }: { searchParams: Promise<{ next?: string | string[]; reauth?: string }> }) {
   const { next, reauth } = await searchParams;
+  const help = await effectiveHelp();
+  const passkey = passkeyPrompt();
   return (
     <AuthScene>
       <SignIn
         siteName={site.name}
+        theme={siteTheme(site)}
+        help={signInHelpProp(site, help.address)}
         passkeysEnabled={site.passkeys !== false}
-        emailHint={emailHintFor(site)}
+        {...(passkey && { passkey })}
+        accountCreation={site.accountCreation}
+        codeLifetimeMinutes={site.codeLifetimeMinutes}
         next={typeof next === 'string' ? next : null}
         reauth={reauth === '1'}
-        lostAuthenticatorHelp={<>Lost your authenticator? Ask an admin of {site.name} to reset it.</>}
       />
     </AuthScene>
   );

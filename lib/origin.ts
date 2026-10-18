@@ -15,8 +15,14 @@
  * server only because amplify.yml writes them into `.env.production` during the build.
  * Development uses site.config.ts's `http://<app>.localhost:<port>`; the auth-matrix server, which
  * runs on another port, sets `SITE_DEV_ORIGIN` to its own loopback origin.
+ *
+ * `backendOrigin()` is the same answer for the Amplify backend, at synthesis: Cognito's code emails
+ * (amplify/auth/custom-message) and the request digest link to the site, and their Lambdas have no
+ * request to read it from.
+ *
+ * No path aliases: the Amplify backend imports it too.
  */
-import { devOrigin } from '@/site.config';
+import { devOrigin } from '../site.config';
 
 function checkedOrigin(value: string, name: string, allowHttpLoopback: boolean): string {
   let url: URL | null = null;
@@ -71,4 +77,19 @@ export function publicOrigin(env: NodeJS.ProcessEnv = process.env): string {
     throw new Error('No public origin: set APP_ORIGIN for this branch in Amplify (amplify.yml writes it into .env.production).');
   }
   return origin;
+}
+
+/**
+ * The site's origin for the Amplify backend, read at synthesis. On Amplify Hosting (the branch
+ * pipeline sets `AWS_BRANCH`): `APP_ORIGIN` if the branch has one, else the branch's default address,
+ * and a synthesis that can't tell fails rather than guess. Anywhere else (your sandbox, a local
+ * synthesis): the local development origin.
+ */
+export function backendOrigin(env: NodeJS.ProcessEnv = process.env): string {
+  if (!env.AWS_BRANCH) return devOrigin;
+  const explicit = env.APP_ORIGIN?.trim();
+  if (explicit) return checkedOrigin(explicit, 'APP_ORIGIN', false);
+  const derived = amplifyBranchOrigin(env.AWS_BRANCH, env.AWS_APP_ID);
+  if (!derived) throw new Error('No public origin for the backend: Amplify set AWS_BRANCH but not AWS_APP_ID. Set APP_ORIGIN for this branch in Amplify.');
+  return derived;
 }

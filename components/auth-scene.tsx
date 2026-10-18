@@ -1,15 +1,17 @@
 /**
- * The sign-in card on the site's backdrop: /sign-in, the error page, and not found.
+ * The site's backdrop behind a sign-in card: /sign-in, /sign-up, /request-access, the chooser page,
+ * /signed-out, the error page, and not found. The card itself is auth-kit's (`SignIn`, `SignUp`,
+ * `AuthCard`, …): it carries the family's colors, the computed 3:1 edge, and the footer identity line,
+ * with nothing above the heading (auth-kit ADR 0024). This component only puts the art behind it.
  *
  * The backdrop is site.config.ts's locked choice (or, until there is one, the proposal from the
  * site's name; lib/backdrop.ts). It's decorative: hidden from assistive technology, never in the way
- * of a click, a single still frame under reduced motion, and muted around the card by a scrim.
+ * of a click, a single still frame under reduced motion, and nothing fades it around the card.
  */
 import { Backdrop } from 'auth-kit/backdrops/react';
 import type { ReactNode } from 'react';
 import { siteBackdrop } from '@/lib/backdrop';
 import { site } from '@/site.config';
-import { AuthCard } from './auth-card';
 
 export function AuthScene({ children }: { children: ReactNode }) {
   const backdrop = siteBackdrop(site);
@@ -22,7 +24,7 @@ export function AuthScene({ children }: { children: ReactNode }) {
       className="auth-scene"
       contentClassName="auth-scene-content"
     >
-      <AuthCard>{children}</AuthCard>
+      {children}
     </Backdrop>
   );
 }
