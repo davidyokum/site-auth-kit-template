@@ -168,7 +168,7 @@ describe('Cognito’s own email (amplify/auth/resource.ts)', () => {
     });
     const { authOptions } = await import('@/amplify/auth/resource');
     expect(authOptions.email).toEqual({ fromAddress: 'noreply@example.com', fromName: 'Example Site (UNC)', replyTo: 'reports-help@example.org' });
-    expect(authOptions.accountCreation).toEqual({ mode: 'invite' });
-    expect(authOptions.codeLifetimeMinutes).toBe(3);
+    expect(authOptions.accountCreation).toEqual(site.accountCreation);
+    expect(authOptions.codeLifetimeMinutes).toBe(site.codeLifetimeMinutes);
   });
 });

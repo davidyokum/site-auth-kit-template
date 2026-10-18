@@ -23,8 +23,18 @@ export interface SiteMatrixPersona extends MatrixPersonaSpec {
   why: string;
 }
 
+/**
+ * On 'domains' sites, the member's address is on the site's list (a subdomain of its first entry), so
+ * the sign-up and request rows can post an address that has an account; elsewhere auth-kit's default.
+ */
+const LISTED_DOMAIN = site.accountCreation.mode === 'domains' ? site.accountCreation.domains?.[0] : undefined;
+
 const BASE_PERSONAS = {
-  member: { groups: [], why: 'Signed in with no group: Contributor on project A (the matrix seeds it), so sees and edits it, and can’t share it.' },
+  member: {
+    groups: [],
+    ...(LISTED_DOMAIN !== undefined && { email: `member@matrix.${LISTED_DOMAIN}` }),
+    why: 'Signed in with no group: Contributor on project A (the matrix seeds it), so sees and edits it, and can’t share it.',
+  },
   otherMember: { groups: [], why: 'A second member with no role on project A: must get 404 for it.' },
   manager: { groups: [], why: 'A member who is Manager of project A: sees and edits it and chooses who has access; no site role.' },
   reader: { groups: [], why: 'A member who is Reader on project A: sees it; editing or sharing it is 403, not 404.' },

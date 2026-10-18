@@ -81,17 +81,12 @@ const SIGNED_IN_PAGE: Expect = {
 const CHOOSER_PAGE: Expect = { ...SIGNED_IN_PAGE, codeOnlyMember: 200 };
 
 /**
- * The authenticator setup page lets in a password user without an authenticator. It skips the
- * factor check by design (that check is what sends people here), so it can't see a disabled
- * account or a revoked session either; it shows no data, and the browser's own Cognito calls are
- * refused for both.
+ * The authenticator setup page lets in a password user without an authenticator (and nobody else
+ * who still has something to set up first: an account with only emailed codes goes to the chooser).
+ * Since auth-kit 0.1.8 it reads the account's factors like every other guard, so a disabled account
+ * or a signed-out-everywhere session is refused here too.
  */
-const AUTHENTICATOR_PAGE: Expect = {
-  ...SIGNED_IN_PAGE,
-  noAuthenticator: 200,
-  disabledAdmin: 200,
-  revokedSession: 200,
-};
+const AUTHENTICATOR_PAGE: Expect = { ...SIGNED_IN_PAGE, noAuthenticator: 200 };
 
 /**
  * Project A's page (requireResourceRole 'view'). The matrix seeds it: `admin` creates it (and so is
