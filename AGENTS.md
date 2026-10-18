@@ -11,6 +11,8 @@ enforces it; this file says how to work inside it.
 Fill in when the site is created (03 §2 Assurance: tier, pool, and account are recorded here).
 
 - **Tier:** 2 (named people). See `site.config.ts`.
+- **Account creation:** `site.config.ts` `accountCreation` (the template: invite only).
+- **Help address:** `site.config.ts` `email.replyTo` (null: the family's mailbox in `site.families.ts`).
 - **AWS account, profile, and Amplify app ID:** `deploy.config.json` (every AWS-touching script checks it
   first; the hygiene test allows its `awsAccountId` and `amplifyAppId` and no other IDs).
 - **Pools:** one per Amplify branch, plus each developer's sandbox. Never shared, never hand-edited.
@@ -58,6 +60,27 @@ Fill in when the site is created (03 §2 Assurance: tier, pool, and account are 
 11. **Honest data.** A failed fetch shows "—" and the reason, never an empty list or a zero.
 12. **Read the guides before changing auth.** auth-kit's README and `node_modules/auth-kit/docs/`
     (the localhost guide and the decision records), and `lib/dev/README.md` here.
+13. **The help address is a role-based mailbox, and required.** Never put a person's own address in
+    `email.replyTo` or the family table (auth-kit refuses one, and `next dev` stops on it). Screens and
+    emails read the address in effect through `lib/accounts.ts` (`effectiveHelp()`, `signInHelp()`),
+    so a Super admin's override (Admin → Settings) shows at once; never hard-code it in a page.
+14. **Account creation follows the one setting.** Pages and routes that only some modes have are
+    `page.signup.tsx` / `route.signup.ts` (sign-up sites) or `page.request.tsx` / `route.request.ts`
+    (request sites); `next.config.ts` makes them routes only there, `lib/public-routes.ts` lists them
+    only there, and the matrix adds their rows. Use `lib/account-modes.ts` for "does this site take
+    sign-ups / requests", never `mode === '…'` checks of your own. Cognito's own sign-up stays off.
+15. **The first credential is required.** After an invite's or a sign-up's first emailed code, people
+    must choose a passkey or a password plus authenticator (`/account/sign-in-method`). Only that page
+    passes `allowFirstCredentialEnrollment`; don't add it anywhere else, and don't offer a "Not now".
+16. **The sign-in card is auth-kit's.** Render `SignIn`, `SignUp`, `RequestAccess`,
+    `SignedOutEverywhere`, or `AuthCard` with the site's theme (`lib/theme.ts`) inside `AuthScene`;
+    don't wrap them in a card of your own, add words above the heading, or restyle their slots beyond
+    `authKitStyles`. Words come from auth-kit's copy deck (Oxford commas).
+17. **Every email matches the card.** Send through the site's mailer (`lib/accounts.ts`
+    `accountMailer()`, `lib/email.ts`): the family's sender, the help address as Reply-To, the card's
+    layout and footer. The custom message trigger (`amplify/auth/custom-message/`) is a security
+    control: keep `customMessageHandler` (or wrap your wording in `withAuthKitCustomMessage`) and its
+    `CUSTOM_MESSAGE_GATE_ENV`.
 
 ## Commands
 
@@ -66,29 +89,43 @@ npm ci
 npm run dev              # http://app.localhost:3000 (bound to 127.0.0.1)
 npm run check            # typecheck, lint, unit tests, build, check:prod-build, auth matrix
 npm run test:matrix      # after `npm run build`
+npm run setup            # a new site: name, family, help mailbox, account creation, owner → site.config.ts
 npm run sandbox          # your own sandbox backend (account-checked; ask before deploying)
 npm run personas:seed    # seed personas into the sandbox (account-checked)
+npm run projects:seed    # the sample project's Manager, Contributor, Reader roles (sandbox only)
+npm run waf:smoke -- --url https://<site>   # open sign-up sites, after every deploy
 ```
 
 ## Layout
 
-- `site.config.ts` the site's identity, including its family, its locked backdrop, and its email hint; `deploy.config.json` where it deploys
-- `site.families.ts` the family table: sender display name, email footer, the card's owner and
-  identity lines, and the email hint (colors come from auth-kit/backdrops); the only file allowed to
-  name an employer (with its unit test)
-- `components/auth-scene.tsx`, `components/auth-card.tsx` the sign-in card on the site's backdrop;
-  `lib/backdrop.ts` what it draws and the build's lock check (next.config.ts); never derive the
-  backdrop at build time, and change it only with `npm run backdrop:pick` or `backdrop:lock`
-- `amplify/` the backend: auth preset (WAF rule modes in `auth/resource.ts`), audit log, invite-expiry schedule, resource access table, projects table, SSR compute role
+- `site.config.ts` the site's identity: family, help address, account-creation mode, code lifetime,
+  privacy notice, site web ACL, locked backdrop, email hint, owner; `deploy.config.json` where it deploys
+- `site.families.ts` the families (auth-kit themes since 0.1.8) and each family's help mailbox; the
+  only file allowed to name an employer (with its unit test); `lib/theme.ts` the site's auth-kit theme
+- `lib/account-modes.ts` what each account-creation mode turns on; `lib/site-checks.ts` what
+  site.config.ts must hold (next.config.ts runs it); `lib/accounts.ts` the help address in effect,
+  Settings, the sign-up and request routes, members' self-service, the request queue, the mailer
+- `components/auth-scene.tsx` the backdrop behind auth-kit's cards; `lib/backdrop.ts` what it draws and
+  the build's lock check (next.config.ts); never derive the backdrop at build time, and change it only
+  with `npm run backdrop:pick` or `backdrop:lock`
+- `amplify/` the backend: auth preset (WAF rule modes in `auth/resource.ts`), the custom message and
+  preSignUp triggers (`auth/custom-message/`, `auth/pre-sign-up/`), audit log, invite-expiry schedule,
+  resource access table, site settings table, each mode's account-creation tables and jobs, projects
+  table, SSR compute role
 - `proxy.ts` default-deny proxy, token checks, session refresh, per-request CSP
 - `lib/auth.ts` `auth` and `pages` guards; `lib/capabilities.ts` the one capability map
 - `lib/admin.ts`, `lib/audit-log.ts`, `lib/alerts.ts` the admin area's actions, log, and alerts;
-  `lib/email.ts` the sender, Reply-To, and footer on the email the site sends
+  `lib/email.ts` the site's mailer: the sender, Reply-To, and the card's layout and footer
 - `lib/resources.ts` the resource types (project) and their switches, and the membership store; `lib/resource-actions.ts` the access actions; `lib/action-response.ts` their answers as HTTP
 - `lib/projects/` the sample items (replace with your own; keep the pattern)
 - `lib/dev/` dev-only code (see its README); `app/api/dev/sign-in/route.dev.ts` "Sign in as…";
   `app/dev/backdrops/page.dev.tsx` and `app/api/dev/backdrop/route.dev.ts` the backdrop picker
-- `app/` pages: `/` and `/sign-in` public; `/account`, `/app`, `/app/projects` members (each project by its resource roles: README, "Projects"); `/admin` every admin role (README, "Roles")
+- `app/` pages: `/`, `/sign-in`, `/signed-out` public (and `/sign-up`, `/request-access` where the mode has
+  them); `/account`, `/account/sign-in-method` (the required first credential), `/app`, `/app/projects`
+  members (each project by its resource roles: README, "Projects"); `/admin` every admin role, and
+  `/admin/settings` Super admins and the owner (README, "Roles", "The help address")
+- `scripts/` local tools: `setup.mjs`, `seed-sample-project.mjs`, `waf-smoke-test.mjs`, the preflight,
+  the backdrop picker's; never shipped
 - `test/unit/` unit and static checks; `test/matrix/` the auth matrix
 
 ## Git
