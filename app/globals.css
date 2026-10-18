@@ -262,7 +262,9 @@ select {
 .ak-unavailable {
   color: var(--danger);
 }
-.ak-button-danger {
+/* Also as a submit button, which the site's button[type='submit'] rule would otherwise paint blue. */
+.ak-button-danger,
+button.ak-button-danger {
   background: var(--danger);
   border-color: var(--danger);
   color: #fff;
