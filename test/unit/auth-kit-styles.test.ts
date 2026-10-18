@@ -5,6 +5,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { backdropStyles } from 'auth-kit/backdrops';
 import { authKitStyles } from 'auth-kit/client';
 import { describe, expect, it } from 'vitest';
 
@@ -14,6 +15,12 @@ describe('app/globals.css', () => {
   it('has every rule of the installed auth-kit’s authKitStyles, verbatim', () => {
     const rules = authKitStyles.split('\n').map((line) => line.trim()).filter(Boolean);
     expect(rules.length).toBeGreaterThan(10);
+    expect(rules.filter((rule) => !css.includes(rule))).toEqual([]);
+  });
+
+  it('has every rule of auth-kit’s backdropStyles, verbatim (the backdrop’s fade-in)', () => {
+    const rules = backdropStyles.split('\n').map((line) => line.trim()).filter(Boolean);
+    expect(rules.length).toBeGreaterThanOrEqual(3);
     expect(rules.filter((rule) => !css.includes(rule))).toEqual([]);
   });
 });

@@ -1,6 +1,8 @@
 import { DEV_ALIAS, DEV_MATRIX_ALIAS, withDevKit } from 'auth-kit/dev';
 import type { NextConfig } from 'next';
+import { enforceBackdropLock } from './lib/backdrop';
 import { staticSecurityHeaders } from './lib/security-headers';
+import { site } from './site.config';
 
 const config: NextConfig = {
   // The auth-matrix tests run their own `next dev` in .next-matrix, so a dev server you have open
@@ -22,8 +24,13 @@ const config: NextConfig = {
  * - `@/dev-matrix` likewise: lib/dev/matrix.on.ts (auth-kit's matrix server mode) or matrix.off.ts.
  * auth-kit's DEV_ALIAS and DEV_MATRIX_ALIAS name exactly these files. tsconfig.json's `paths` point
  * both aliases at the off modules, so type checks see what builds get.
- * `npm run check:prod-build` proves a build contains none of it.
+ * `npm run check:prod-build` proves a build contains none of it. The backdrop picker is dev-only the
+ * same way: app/dev/backdrops/page.dev.tsx and app/api/dev/backdrop/route.dev.ts.
  */
-const nextConfig = (phase: string) => withDevKit(phase, config, { aliases: [DEV_ALIAS, DEV_MATRIX_ALIAS] });
+const nextConfig = (phase: string) => {
+  // A deploy build stops on a backdrop that isn't locked; other builds warn (lib/backdrop.ts).
+  enforceBackdropLock(site, { phase, env: process.env });
+  return withDevKit(phase, config, { aliases: [DEV_ALIAS, DEV_MATRIX_ALIAS] });
+};
 
 export default nextConfig;

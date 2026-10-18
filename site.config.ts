@@ -2,13 +2,25 @@
  * The site's identity: the one file to edit first when starting a new site from this template.
  *
  * Plain data, because both halves of the project read it: the Next.js app (titles, sign-in screens,
- * invite emails) and the Amplify backend in `amplify/` (pool tags, sender address). Its one import
- * is site.families.ts, plain data too; neither uses path aliases.
+ * invite emails) and the Amplify backend in `amplify/` (pool tags, sender address). Its imports are
+ * site.families.ts (plain data too) and one type from auth-kit; neither uses path aliases.
  *
  * Everything here is public (it ends up in the browser bundle or in AWS tags). Never put a secret,
  * an AWS account ID, or a pool ID here. Where to deploy lives in `deploy.config.json`.
  */
+import type { BackdropStyleId } from 'auth-kit/backdrops';
 import type { SiteFamily } from './site.families';
+
+/**
+ * The art behind the sign-in card, as stored. Locked: `{ style, seed, styleVersion, locked: true }`,
+ * all literal (auth-kit ADR 0020). `npm run backdrop:pick` and `npm run backdrop:lock` write it.
+ */
+export interface SiteBackdrop {
+  readonly style: BackdropStyleId;
+  readonly seed?: string | number;
+  readonly styleVersion?: number;
+  readonly locked?: boolean;
+}
 
 export const site = {
   /** Shown in titles, the sign-in screens, invite emails, and people's authenticator apps. */
@@ -17,13 +29,31 @@ export const site = {
   /**
    * Who runs the site: one of the families in site.families.ts ('personal' is Yokum Lab). It sets
    * the sender's display name on all auth email (the site's name, plus the family's short name for
-   * the work families) and the footer of the email the site sends. The design work's per-family
-   * theme will hang off it too. The template ships 'personal'.
+   * the work families), the footer of the email the site sends, and the sign-in card's owner line,
+   * colors, and email hint, and the backdrop's palette. The template ships 'personal'.
    */
   family: 'personal' as SiteFamily,
 
   /** UNC only: the unit, as in "A UNC-Chapel Hill {unit} project". Null: "A UNC-Chapel Hill project." */
   familyUnit: null as string | null,
+
+  /**
+   * The art behind the sign-in card (auth-kit/backdrops). Choose it with `npm run backdrop:pick`
+   * (nine variations behind the real card, locally; no AWS), which writes the literal choice here,
+   * locked, with a backup in site.config.ts.bak. The site's name only proposes a default: with
+   * `null` (no choice yet) local development draws that proposal, and production builds fail until
+   * a backdrop is locked (`npm run backdrop:pick`, or `npm run backdrop:lock` to keep the proposal).
+   * Locked, it never changes: not if the site is renamed, not across auth-kit upgrades.
+   * Keep it on one line in this form; the picker rewrites exactly this line.
+   */
+  backdrop: null as SiteBackdrop | null,
+
+  /**
+   * The email field's example address on the sign-in screens (its placeholder; the "Email address"
+   * label always shows). Null: the family's, e.g. "name@example.com". Set it when the people who
+   * sign in use other addresses (outside partners on a work site).
+   */
+  emailHint: null as string | null,
 
   /** Slug for AWS tags and metric names: lowercase letters, digits, and hyphens. */
   project: 'example-site',

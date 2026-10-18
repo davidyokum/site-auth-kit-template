@@ -341,3 +341,189 @@ select {
 .ak-compare-roles[open] {
   overflow-x: auto;
 }
+
+
+/*
+ * The sign-in scene: the card on the site's backdrop (components/auth-scene.tsx, auth-card.tsx).
+ * The design report's §7.1 core: a white card 440px wide with 6px corners and a 4px family rule,
+ * 48px fields and buttons, 16px text; ink #092940, body #3c434b, a 3px focus ring. Family colors come
+ * in as custom properties from auth-kit's family table. The scene stays light in dark mode: the
+ * design defines one light card, and the backdrops are painted for light pages.
+ */
+body {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+main {
+  flex: 1 0 auto;
+  width: 100%;
+}
+
+main:has(> .auth-scene),
+main:has(> .akp) {
+  max-width: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.auth-scene {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+  color-scheme: light;
+}
+
+.auth-scene-content {
+  flex: 1 0 auto;
+  display: grid;
+  place-items: center;
+  padding: 56px var(--gutter) 72px;
+}
+
+.auth-card {
+  width: min(440px, 100%);
+  background: #ffffff;
+  color: var(--card-body);
+  border-top: 4px solid var(--card-rule);
+  border-radius: 6px;
+  padding: 32px 36px 24px;
+  box-shadow: 0 1px 2px rgba(9, 41, 64, 0.06), 0 16px 40px -16px rgba(9, 41, 64, 0.22);
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+@media (max-width: 480px) {
+  .auth-scene-content {
+    padding: 24px var(--gutter) 40px;
+    align-items: start;
+  }
+  .auth-card {
+    padding: 24px 20px 20px;
+  }
+}
+
+.auth-card-owner {
+  margin: 0 0 6px;
+  font-size: 14px;
+  color: #5b6270;
+}
+
+.auth-card-footer {
+  margin: 24px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid #e5e7eb;
+  font-size: 14px;
+  color: #5b6270;
+}
+
+.auth-card h1,
+.auth-card [data-auth-kit-slot='heading'] {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.2;
+  font-weight: 650;
+  color: var(--card-heading);
+  letter-spacing: -0.01em;
+}
+
+.auth-card [data-auth-kit] {
+  max-width: none;
+  gap: 20px;
+}
+
+.auth-card [data-auth-kit-slot='form'] {
+  gap: 20px;
+}
+
+.auth-card [data-auth-kit-slot='label'] {
+  color: var(--card-heading);
+}
+
+.auth-card [data-auth-kit-slot='input'] {
+  height: 48px;
+  width: 100%;
+  padding: 0 12px;
+  border: 1px solid #8a94a3;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #092940;
+  font-size: 16px;
+}
+
+.auth-card [data-auth-kit-slot='input']::placeholder {
+  color: #6b7280;
+  opacity: 1;
+}
+
+.auth-card [data-auth-kit-slot='input']:focus-visible,
+.auth-card button:focus-visible,
+.auth-card a:focus-visible {
+  outline: 3px solid var(--card-focus);
+  outline-offset: 2px;
+}
+
+.auth-card [data-auth-kit-slot='actions'] {
+  gap: 8px 20px;
+}
+
+.auth-card [data-auth-kit-slot='button'] {
+  min-height: 48px;
+  width: 100%;
+  border: 0;
+  border-radius: 4px;
+  background: var(--card-button);
+  color: var(--card-button-text);
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.auth-card [data-auth-kit-slot='secondaryButton'] {
+  min-height: 48px;
+  border-radius: 4px;
+  border: 1px solid #8a94a3;
+  background: #ffffff;
+  color: #092940;
+}
+
+.auth-card [data-auth-kit-slot='linkButton'],
+.auth-card a {
+  color: var(--card-link);
+  text-underline-offset: 2px;
+}
+
+.auth-card [data-auth-kit-slot='text'],
+.auth-card [data-auth-kit-slot='hint'] {
+  color: var(--card-body);
+}
+
+.auth-card [data-auth-kit-slot='error'] {
+  color: #b3261e;
+}
+
+.auth-card .auth-message {
+  gap: 14px;
+}
+
+.auth-card .auth-message p {
+  margin: 0;
+}
+
+.auth-card .auth-message button {
+  min-height: 48px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 4px;
+  background: var(--card-button);
+  color: var(--card-button-text);
+}
+
+/* auth-kit/backdrops: its optional zero-specificity defaults (backdropStyles), copied here so the CSP
+ * needs no inline <style>: the backdrop fades in after its first frame (not under reduced motion).
+ * Keep it in step with auth-kit's (a unit test checks). */
+:where([data-auth-kit-backdrop-canvas]) { opacity: 0; transition: opacity 700ms ease-out; }
+:where([data-auth-kit-backdrop-canvas][data-ready]) { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { :where([data-auth-kit-backdrop-canvas]) { transition: none; } }
