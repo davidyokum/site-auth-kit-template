@@ -139,7 +139,13 @@ describe('updateProjectAction (app/app/projects/[id]/actions.ts)', () => {
       ['intent', 'projects.update'],
       ['result', 'projects.update'],
     ]);
-    expect(state.log.rows[1]).toMatchObject({ outcome: 'ok', target: { recordId: `project:${p.id}` }, before: { name: 'Roads' }, after: { name: 'Roads 2027' } });
+    expect(state.log.rows[1]).toMatchObject({
+      outcome: 'ok',
+      target: { recordId: `project:${p.id}` },
+      // The noun and name ride on the row, so the Activity page names the project, never its ID.
+      before: { name: 'Roads', item: { noun: 'project', name: 'Roads' } },
+      after: { name: 'Roads 2027', item: { noun: 'project', name: 'Roads 2027' } },
+    });
     expect(state.revalidatePath).toHaveBeenCalledWith(`/app/projects/${p.id}`);
   });
 

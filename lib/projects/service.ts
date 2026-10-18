@@ -45,8 +45,9 @@ export async function updateProject(
         actor: { sub: user.sub, ...(user.profile?.email !== undefined && { email: user.profile.email }) },
         action: 'projects.update',
         target: { recordId: `project:${current.id}` },
-        before: { name: current.name, updatedAt: expectedUpdatedAt },
-        after: { name: changes.name },
+        // The noun and name as of the change: the Activity page names the project, never its ID.
+        before: { name: current.name, updatedAt: expectedUpdatedAt, item: { noun: 'project', name: current.name } },
+        after: { name: changes.name, item: { noun: 'project', name: changes.name } },
         calls: ['PutItem projects'],
       },
       run: async (steps) => {
@@ -54,7 +55,7 @@ export async function updateProject(
           projectStore().update(current.id, changes, { sub: user.sub, at: new Date().toISOString(), expectedUpdatedAt }),
         );
         if (!saved) throw new ProjectGoneError();
-        return { value: saved, after: { name: saved.name, updatedAt: saved.updatedAt } };
+        return { value: saved, after: { name: saved.name, updatedAt: saved.updatedAt, item: { noun: 'project', name: saved.name } } };
       },
     });
     return { ok: true, project, outcomeLogged: true };

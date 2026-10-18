@@ -241,6 +241,16 @@ describe('what the matrix rows can’t express', () => {
     expect(contributorPage).not.toContain('Share this project');
   });
 
+  it('the Activity page names project A and its people, never an ID (register rule C5)', async () => {
+    const html = await (await send('/admin/activity', { as: 'owner' })).text();
+    // What the page shows: its text, without scripts (the client component's props travel in them).
+    const shown = html.replace(/<script\b[\s\S]*?<\/script>/g, ' ').replace(/<[^>]+>/g, ' ');
+    expect(shown).toContain('the project “Project A”');
+    expect(shown).toContain(personas.member.email);
+    expect(shown).not.toContain(projectId);
+    for (const name of Object.keys(personas) as MatrixPersonaKey[]) expect(shown, name).not.toContain(personas[name].sub);
+  });
+
   it('every item keeps a Manager: the only Manager can’t demote themselves through the API', async () => {
     const response = await send(`/api/projects/${projectId}/access`, { as: 'admin', method: 'PUT', ...json({ email: personas.admin.email, role: 'reader' }) });
     expect(response.status).toBe(409);
