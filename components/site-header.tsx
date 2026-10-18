@@ -29,7 +29,7 @@ export async function SiteHeader() {
           {user ? (
             <>
               <Link href="/app">Tickets</Link>
-              {auth.can(user, 'people.manage') && <Link href="/admin">Admin</Link>}
+              {auth.can(user, 'people.read') && <Link href="/admin">Admin</Link>}
               <Link href="/account">My account</Link>
               <span className="muted small">{user.profile?.email ?? 'Signed in'}</span>
               <SignOutButton />

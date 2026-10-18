@@ -5,12 +5,13 @@
  * family footer (lib/email.ts). Every alert is also logged, so it reaches the server logs even
  * before anyone is named.
  *
- * Owner grants get a second, separate alert from auth-kit itself (every owner is emailed, and the
- * grant is undone if that email can't be sent); that one isn't optional.
+ * Super admin grants and ownership transfers get a second, separate alert from auth-kit itself (the
+ * owner is emailed, or both owners for a transfer, and the change is undone if that email can't be
+ * sent); that one isn't optional.
  */
 import 'server-only';
 import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
-import type { AuditEvent } from 'auth-kit/admin';
+import { type AuditEvent, isStandardGroup } from 'auth-kit/admin';
 import { site } from '@/site.config';
 import { replyToAddresses, senderMailbox, withFooterText } from './email';
 import { outputs } from './outputs';
@@ -20,6 +21,7 @@ export function isGrantOrRemoval(event: Pick<AuditEvent, 'action' | 'after' | 'o
   if (event.outcome === 'failed') return false;
   switch (event.action) {
     case 'people.changeRole':
+    case 'people.transferOwnership':
     case 'people.disable':
     case 'people.enable':
     case 'people.delete':
@@ -28,7 +30,7 @@ export function isGrantOrRemoval(event: Pick<AuditEvent, 'action' | 'after' | 'o
       // An invite that grants an admin role (not a plain member or app role).
       const after = event.after as { adminRole?: unknown; role?: unknown } | undefined;
       const role = after?.adminRole ?? after?.role;
-      return typeof role === 'string' && ['superadmin', 'admin', 'editor', 'viewer'].includes(role);
+      return isStandardGroup(role);
     }
     default:
       return false;

@@ -10,7 +10,7 @@
     "standard_required_attributes": ["email"],
     "username_attributes": ["email"],
     "user_verification_types": ["email"],
-    "groups": [{ "superadmin": { "precedence": 0 } }, { "admin": { "precedence": 1 } }, { "editor": { "precedence": 2 } }, { "viewer": { "precedence": 3 } }],
+    "groups": [{ "owner": { "precedence": 0 } }, { "superadmin": { "precedence": 1 } }, { "admin-content-people": { "precedence": 2 } }, { "admin-content": { "precedence": 3 } }, { "admin-view": { "precedence": 4 } }],
     "mfa_configuration": "OPTIONAL",
     "password_policy": {
       "min_length": 15,

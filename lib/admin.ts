@@ -1,9 +1,10 @@
 /**
  * The admin area's People and Activity actions (auth-kit/admin; primer §9). Server-only.
  *
- * Every action re-reads the acting person and the target from Cognito, runs the guardrails with a
- * live owner count (grant only below your own role, nobody changes their own role, keep an owner),
- * asks for a recent sign-in before a grant or a delete, and writes the audit intent before any
+ * Every action re-reads the acting person and the target from Cognito, runs the guardrails (the
+ * site-wide roles, auth-kit ADR 0020: grant only below your own role, nobody changes their own role,
+ * only the owner grants Super admin, the owner role moves only by Transfer ownership), asks for a
+ * recent sign-in before a grant, a transfer, or a delete, and writes the audit intent before any
  * Cognito call and the result after (auth-kit ADR 0010, 0011).
  *
  * Created on first use, not at import: building it needs the public origin (for invite links),
@@ -30,7 +31,8 @@ export function peopleActions(): PeopleActions {
     auditLog: auditLog(),
     // Everyday pools invite with an emailed code: no password, no `email_verified`, and the app's own
     // email (Cognito's is suppressed), from the family's sender with its Reply-To and footer
-    // (lib/email.ts). A Tier 3 admin pool uses inviteMode: 'temporary-password'.
+    // (lib/email.ts). The same mailer sends the owner's alerts (a Super admin grant, an ownership
+    // transfer). A Tier 3 admin pool uses inviteMode: 'temporary-password'.
     mailer: matrix?.mailer ?? createSiteMailer({ region: outputs.auth.aws_region }),
     siteName: site.name,
     signInUrl: `${publicOrigin()}/sign-in`,

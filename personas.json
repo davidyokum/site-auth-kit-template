@@ -1,8 +1,9 @@
 [
-  { "key": "superadmin", "email": "owner@example-site.test", "groups": ["superadmin"], "label": "Owner" },
-  { "key": "admin", "email": "admin@example-site.test", "groups": ["admin"], "label": "Admin" },
-  { "key": "editor", "email": "editor@example-site.test", "groups": ["editor"], "label": "Editor" },
-  { "key": "viewer", "email": "viewer@example-site.test", "groups": ["viewer"], "label": "Viewer" },
+  { "key": "owner", "email": "owner@example-site.test", "groups": ["owner"], "label": "Owner" },
+  { "key": "superadmin", "email": "superadmin@example-site.test", "groups": ["superadmin"], "label": "Super admin" },
+  { "key": "admin-content-people", "email": "admin-content-people@example-site.test", "groups": ["admin-content-people"], "label": "Admin – content & people" },
+  { "key": "admin-content", "email": "admin-content@example-site.test", "groups": ["admin-content"], "label": "Admin – content only" },
+  { "key": "admin-view", "email": "admin-view@example-site.test", "groups": ["admin-view"], "label": "Admin – view only" },
   { "key": "member", "email": "member@example-site.test", "groups": [], "label": "Member" },
   { "key": "member-2", "email": "member-2@example-site.test", "groups": [], "label": "Second member" }
 ]

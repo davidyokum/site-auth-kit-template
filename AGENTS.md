@@ -18,7 +18,7 @@ Fill in when the site is created (03 §2 Assurance: tier, pool, and account are 
 ## Rules
 
 1. **Sign in on localhost only as a persona, never with real credentials.** Use "Sign in as…" in
-   the ribbon, or `POST /api/dev/sign-in` with `{"persona":"editor"}` from the page's own origin
+   the ribbon, or `POST /api/dev/sign-in` with `{"persona":"admin-content"}` from the page's own origin
    (`http://app.localhost:3000`). Personas are throwaway sandbox accounts from `personas.json`. Never
    ask for, type, paste, or store anyone's real password, code, or passkey, and never sign in to a
    deployed site on someone's behalf.
@@ -79,7 +79,7 @@ npm run personas:seed    # seed personas into the sandbox (account-checked)
   `lib/email.ts` the sender, Reply-To, and footer on the email the site sends
 - `lib/tickets/` the sample records (replace with your own; keep the pattern)
 - `lib/dev/` dev-only code (see its README); `app/api/dev/sign-in/route.dev.ts` "Sign in as…"
-- `app/` pages: `/` and `/sign-in` public; `/account`, `/app` members; `/admin` owners and admins
+- `app/` pages: `/` and `/sign-in` public; `/account`, `/app` members; `/admin` every admin role (README, "Roles")
 - `test/unit/` unit and static checks; `test/matrix/` the auth matrix
 
 ## Git

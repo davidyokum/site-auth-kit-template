@@ -45,10 +45,10 @@ describe('@/dev-matrix', () => {
     expect(() => on.matrixOverrides()).toThrow(new RegExp(`needs ${MATRIX_FIXTURE_ENV}`));
   });
 
-  it('describes all 11 personas (anonymous plus these ten) in a fixture auth-kit accepts', () => {
+  it('describes all 12 personas (anonymous plus these eleven) in a fixture auth-kit accepts', () => {
     const { fixture, personas } = matrixFixture({ issuer: issuer(), personas: matrixPersonaSpecs() });
     expect(Object.keys(personas).sort()).toEqual(Object.keys(MATRIX_PERSONAS).sort());
-    expect(Object.keys(personas).length + 1).toBe(11);
+    expect(Object.keys(personas).length + 1).toBe(12);
     // The parser refuses unknown fields, so `why` (documentation) never reaches the fixture.
     expect(parseMatrixFixture(JSON.stringify(fixture))).toEqual(fixture);
     for (const user of fixture.users) expect(user).not.toHaveProperty('why');

@@ -33,15 +33,18 @@ const send = (path: string, init: RequestInit & { as?: MatrixPersonaKey } = {}) 
 // without an authenticator to /account/authenticator). 404: not allowed, or not theirs: pages and
 // record routes never confirm that something exists.
 
+/** Every admin role, answering the same. */
+const ADMINS = (status: number) => ({ adminView: status, adminContent: status, admin: status, superadmin: status, owner: status });
+
 /** Public pages: everyone. */
 const PUBLIC: Expect = {
-  anonymous: 200, member: 200, otherMember: 200, viewer: 200, editor: 200, admin: 200, owner: 200,
+  anonymous: 200, member: 200, otherMember: 200, ...ADMINS(200),
   noAuthenticator: 200, demotedAdmin: 200, disabledAdmin: 200, revokedSession: 200,
 };
 
 /** Pages any signed-in person may open (requireUser). */
 const SIGNED_IN_PAGE: Expect = {
-  anonymous: 307, member: 200, otherMember: 200, viewer: 200, editor: 200, admin: 200, owner: 200,
+  anonymous: 307, member: 200, otherMember: 200, ...ADMINS(200),
   noAuthenticator: 307, // → /account/authenticator
   demotedAdmin: 200, // not an admin page: the token's groups apply until it's refreshed (≤ 60 min)
   disabledAdmin: 307, // Cognito refuses a disabled account's token at the factor check
@@ -65,16 +68,20 @@ const AUTHENTICATOR_PAGE: Expect = {
 const OWN_RECORD_PAGE: Expect = {
   ...SIGNED_IN_PAGE,
   otherMember: 404, // the standard's second-member check: not theirs, so "not found"
-  viewer: 404,
-  editor: 404, // content roles don't cover tickets
+  adminView: 404, // tickets are members' own items, not site content: view-only admins don't see them
+  adminContent: 404, // ...nor do content-only admins
   admin: 200, // tickets.read-all
+  superadmin: 200,
   owner: 200,
   demotedAdmin: 200, // token still carries tickets.read-all until refresh; admin PAGES check live
 };
 
-/** Admin pages (requireCan('people.manage' | 'audit.read', { live: true })). */
+/**
+ * Admin pages (requireCan('people.read' | 'audit.read', { live: true })): every admin role sees the
+ * admin area, Admin – view only included; what each may change is the People actions' business.
+ */
 const ADMIN_PAGE: Expect = {
-  anonymous: 307, member: 404, otherMember: 404, viewer: 404, editor: 404, admin: 200, owner: 200,
+  anonymous: 307, member: 404, otherMember: 404, ...ADMINS(200),
   noAuthenticator: 307,
   demotedAdmin: 404, // live re-read: Cognito says member now, so the admin area refuses at once
   disabledAdmin: 307,
@@ -83,7 +90,7 @@ const ADMIN_PAGE: Expect = {
 
 /** API routes any signed-in person may call. */
 const SIGNED_IN_API: Expect = {
-  anonymous: 401, member: 200, otherMember: 200, viewer: 200, editor: 200, admin: 200, owner: 200,
+  anonymous: 401, member: 200, otherMember: 200, ...ADMINS(200),
   noAuthenticator: 403, // mfa_enrollment_required
   demotedAdmin: 200,
   disabledAdmin: 401, // account_disabled
@@ -92,7 +99,7 @@ const SIGNED_IN_API: Expect = {
 
 const CREATE_API: Expect = Object.fromEntries(Object.entries(SIGNED_IN_API).map(([k, v]) => [k, v === 200 ? 201 : v])) as Expect;
 
-const OWN_RECORD_API: Expect = { ...SIGNED_IN_API, otherMember: 404, viewer: 404, editor: 404 };
+const OWN_RECORD_API: Expect = { ...SIGNED_IN_API, otherMember: 404, adminView: 404, adminContent: 404 };
 
 // ---- The matrix -------------------------------------------------------------------------------
 
@@ -144,8 +151,8 @@ describe('auth matrix', () => {
       params: { id: memberTicketId },
       routes,
     });
-    // 12 routes × 11 personas × 2 passes.
-    expect(results.length).toBe(routes.length * 11 * 2);
+    // 12 routes × 12 personas × 2 passes.
+    expect(results.length).toBe(routes.length * 12 * 2);
   });
 });
 
@@ -168,8 +175,10 @@ describe('what the matrix rows can’t express', () => {
     };
     expect(await ids('member')).toContain(memberTicketId);
     expect(await ids('otherMember')).not.toContain(memberTicketId);
-    expect(await ids('editor')).not.toContain(memberTicketId);
+    expect(await ids('adminView')).not.toContain(memberTicketId);
+    expect(await ids('adminContent')).not.toContain(memberTicketId);
     expect(await ids('admin')).toContain(memberTicketId);
+    expect(await ids('owner')).toContain(memberTicketId);
   });
 
   it('a state change from another origin is refused (403 origin_mismatch)', async () => {
@@ -205,7 +214,7 @@ describe('what the matrix rows can’t express', () => {
   });
 
   it('a forged token (groups edited, signature kept) is refused everywhere', async () => {
-    const forged = tamperToken(personas.member.accessToken, { 'cognito:groups': ['superadmin'] });
+    const forged = tamperToken(personas.member.accessToken, { 'cognito:groups': ['owner'] });
     const response = await fetch(new URL('/api/tickets', baseUrl), { headers: { authorization: `Bearer ${forged}` } });
     expect(response.status).toBe(401);
     const page = await fetch(new URL('/admin/people', baseUrl), { headers: { authorization: `Bearer ${forged}` }, redirect: 'manual' });

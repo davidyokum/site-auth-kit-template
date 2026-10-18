@@ -29,8 +29,8 @@ export default function Home() {
         <section className="card">
           <h2>Admin</h2>
           <p className="muted">
-            Owners and admins invite people, change roles, and disable accounts. Every change is written to an
-            append-only activity log.
+            One owner, Super admins, and admins (content &amp; people, content only, or view only) run the site.
+            Every change is written to an append-only activity log.
           </p>
         </section>
       </div>

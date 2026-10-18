@@ -10,7 +10,7 @@ describe('the pool settings (amplify/auth/resource.ts) and the app agree', () =>
   it('the preset accepts the site config (a typo fails here, not at deploy)', () => {
     expect(pool.project).toBe(site.project);
     expect(pool.email.fromAddress).toBe(site.email.fromAddress);
-    expect(pool.groups.slice(0, 4)).toEqual(['superadmin', 'admin', 'editor', 'viewer']);
+    expect(pool.groups.slice(0, 5)).toEqual(['owner', 'superadmin', 'admin-content-people', 'admin-content', 'admin-view']);
   });
 
   it('token cookies expire with the refresh token the pool actually issues', () => {

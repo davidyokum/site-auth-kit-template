@@ -1,6 +1,6 @@
 /**
  * The site's own email (lib/email.ts): the family's sender name, the help mailbox as Reply-To, and
- * the family footer on invites and owner-grant alerts (auth-kit's SES mailer and templates). And
+ * the family footer on invites and the owner's alerts (auth-kit's SES mailer and templates). And
  * Cognito's own email (amplify/auth/resource.ts): the same sender name and Reply-To, no footer.
  * No AWS: the mailer gets a fake SES client that records what it would send.
  */
@@ -54,7 +54,7 @@ describe('the sender and Reply-To', () => {
   });
 });
 
-describe('invites and owner-grant alerts (createSiteMailer)', () => {
+describe('invites and the owner’s alerts (createSiteMailer)', () => {
   const expiresAt = new Date('2026-10-24T21:00:00Z');
 
   it('send the invite from the family’s sender, with Reply-To and the footer in both parts', async () => {
@@ -74,12 +74,12 @@ describe('invites and owner-grant alerts (createSiteMailer)', () => {
     expect(body?.Html?.Data).toMatch(/<p>A UNC-Chapel Hill Example Unit project\. Help: help@example\.com\.<\/p>$/);
   });
 
-  it('send the owner-grant alert the same way, to every owner', async () => {
+  it('send the Super admin grant alert the same way, to the owner', async () => {
     const ses = fakeSes();
-    await createSiteMailer({ region: 'us-east-1', client: ses.client }, personal).ownerGranted({
+    await createSiteMailer({ region: 'us-east-1', client: ses.client }, personal).superadminGranted({
       siteName: personal.name,
-      owners: [{ sub: 'a', email: 'owner@example.com' }, { sub: 'b', email: 'new.owner@example.com' }],
-      grantedTo: { sub: 'b', email: 'new.owner@example.com' },
+      owners: [{ sub: 'a', email: 'owner@example.com' }],
+      grantedTo: { sub: 'b', email: 'deputy@example.com' },
       grantedBy: { sub: 'a', email: 'owner@example.com' },
       via: 'changeRole',
       at: expiresAt,
@@ -87,9 +87,37 @@ describe('invites and owner-grant alerts (createSiteMailer)', () => {
     const [input] = ses.sent;
     expect(input?.FromEmailAddress).toBe('Example Site <noreply@example.com>');
     expect(input?.ReplyToAddresses).toEqual(['help@example.com']);
-    expect(input?.Destination?.ToAddresses).toEqual(['owner@example.com', 'new.owner@example.com']);
+    expect(input?.Destination?.ToAddresses).toEqual(['owner@example.com']);
+    expect(input?.Content?.Simple?.Body?.Text?.Data).toMatch(/is now a Super admin|a Super admin of Example Site/);
     expect(input?.Content?.Simple?.Body?.Text?.Data).toMatch(/\n\nMade by Yokum Lab\. Help: help@example\.com\.$/);
     expect(input?.Content?.Simple?.Body?.Html?.Data).toMatch(/<p>Made by Yokum Lab\. Help: help@example\.com\.<\/p>$/);
+  });
+
+  it('send the ownership transfer alert to both owners, with the footer', async () => {
+    const ses = fakeSes();
+    await createSiteMailer({ region: 'us-east-1', client: ses.client }, personal).ownershipTransferred({
+      siteName: personal.name,
+      previousOwner: { sub: 'a', email: 'owner@example.com' },
+      newOwner: { sub: 'b', email: 'next.owner@example.com' },
+      reason: 'Handing the site over',
+      at: expiresAt,
+    });
+    const [input] = ses.sent;
+    expect(input?.Destination?.ToAddresses).toEqual(['owner@example.com', 'next.owner@example.com']);
+    expect(input?.Content?.Simple?.Body?.Text?.Data).toMatch(/transferred ownership of Example Site[\s\S]*\n\nMade by Yokum Lab\. Help: help@example\.com\.$/);
+  });
+
+  it('send the unused-owner-invite warning with the footer too', async () => {
+    const ses = fakeSes();
+    await createSiteMailer({ region: 'us-east-1', client: ses.client }, personal).ownerInviteUnused({
+      siteName: personal.name,
+      owner: { sub: 'a', email: 'owner@example.com' },
+      to: { email: 'owner@example.com', kind: 'owner' },
+      invitedAt: new Date('2026-10-01T00:00:00Z'),
+      expiredAt: new Date('2026-10-08T00:00:00Z'),
+      at: expiresAt,
+    });
+    expect(ses.sent[0]?.Content?.Simple?.Body?.Text?.Data).toMatch(/\n\nMade by Yokum Lab\. Help: help@example\.com\.$/);
   });
 
   it('send no Reply-To header when the site has no help address', async () => {

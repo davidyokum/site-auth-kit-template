@@ -5,7 +5,7 @@
  * server's console says which gate refused (lib/dev/kit.ts lists them).
  *
  *   GET    personas and who's signed in (for the menu)
- *   POST   {"persona":"editor"} from this page's origin: sign that persona in for real
+ *   POST   {"persona":"admin-content"} from this page's origin: sign that persona in for real
  *   DELETE sign out
  */
 import { devKit } from '@/lib/dev/kit';

@@ -53,7 +53,8 @@ export const site = {
   },
 
   /**
-   * App roles: groups beyond superadmin (Owner), admin, editor, and viewer, e.g. ['reviewer'].
+   * App roles: groups beyond the site-wide roles (owner, superadmin, admin-content-people,
+   * admin-content, admin-view; auth-kit ADR 0020), e.g. ['reviewer'].
    * Each one needs capabilities in lib/capabilities.ts and a persona in personas.json.
    */
   appRoles: [] as readonly string[],
@@ -66,8 +67,10 @@ export const site = {
 
   /**
    * Named people who get an email whenever someone's role is granted or removed, or an account is
-   * disabled or deleted (03 §2: "grants and removals alert a named person"). Owners also get
-   * auth-kit's own alert whenever someone is made an owner. Empty: the alert is only logged.
+   * disabled or deleted (03 §2: "grants and removals alert a named person"). The owner also gets
+   * auth-kit's own alert whenever someone is made Super admin, and both owners when ownership moves.
+   * The first address is also warned when the owner's invite goes unused (amplify/backend.ts).
+   * Empty: the alert is only logged.
    */
   alertEmails: [] as readonly string[],
 
