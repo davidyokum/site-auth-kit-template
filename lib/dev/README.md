@@ -23,7 +23,8 @@ The auth matrix (test/matrix) runs every route as every persona against the real
 - `lib/auth.ts`: `serverAuth`, so tokens verify against the test issuer's public keys (nothing is fetched from the pool) and a scripted Cognito answers the authenticator check and live re-reads, refusing a disabled account and a revoked session the way Cognito does.
 - `lib/admin.ts`: `peopleCognito` (reads the fixture, refuses every change) and `mailer` (sends nothing).
 - `lib/audit-log.ts`: `auditLog`, in memory.
-- `lib/tickets/index.ts`: `shared('tickets', createMemoryTicketStore)`, the app's own in-memory store, one per server process, so a ticket the API files shows on the page.
+- `lib/projects/index.ts`: `shared('projects', createMemoryProjectStore)`, the app's own in-memory store, one per server process, so a project the API creates shows on the page.
+- `lib/resources.ts`: `matrix.resources`, auth-kit's in-memory membership store (who has which role on which project), shared by every bundle.
 
 Everything else is the production code path: the same proxy, guards, capability map, and pages. auth-kit returns `null` unless `NODE_ENV` is `development` and the flag is set, and throws (never falls back to AWS) if the flag comes without a fixture. Its proxy honors the matrix's "without proxy" pass only outside production builds, only with that flag, and only on a loopback URL. Details: auth-kit's README ("Auth-matrix tests") and ADR 0016.
 

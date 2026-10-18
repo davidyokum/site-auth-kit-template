@@ -14,11 +14,11 @@ export interface SiteMatrixPersona extends MatrixPersonaSpec {
 }
 
 export const MATRIX_PERSONAS = {
-  member: { groups: [], why: 'Signed in with no group: owns their own tickets, nothing else.' },
-  otherMember: { groups: [], why: 'A second member: must get 404 for the first member’s items.' },
-  adminView: { groups: ['admin-view'], why: 'Admin – view only: sees the admin area, changes nothing; no one else’s tickets.' },
-  adminContent: { groups: ['admin-content'], why: 'Admin – content only: any content, no people, no one else’s tickets.' },
-  admin: { groups: ['admin-content-people'], why: 'Admin – content & people: people below their own role, and tickets.read-all.' },
+  member: { groups: [], why: 'Signed in with no group: Contributor on project A (the matrix seeds it), so sees and edits it, and can’t share it.' },
+  otherMember: { groups: [], why: 'A second member with no role on project A: must get 404 for it.' },
+  adminView: { groups: ['admin-view'], why: 'Admin – view only: sees the admin area and every project, changes nothing.' },
+  adminContent: { groups: ['admin-content'], why: 'Admin – content only: edits every project, no people, can’t share a project.' },
+  admin: { groups: ['admin-content-people'], why: 'Admin – content & people: people below their own role; creates project A and is its Manager.' },
   superadmin: { groups: ['superadmin'], why: 'Super admin: everything but owner-only.' },
   owner: { groups: ['owner'], why: 'The owner: everything.' },
   noAuthenticator: {
@@ -64,7 +64,7 @@ export function matrixPersonaSpecs(): Record<MatrixPersonaKey, MatrixPersonaSpec
 export interface MatrixContext {
   baseUrl: string;
   clientId: string;
-  personas: Record<MatrixPersonaKey, { username: string; sub: string; accessToken: string; idToken: string; cookie: string }>;
+  personas: Record<MatrixPersonaKey, { username: string; sub: string; email: string; accessToken: string; idToken: string; cookie: string }>;
 }
 
 declare module 'vitest' {

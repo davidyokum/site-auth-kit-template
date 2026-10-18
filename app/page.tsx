@@ -20,10 +20,10 @@ export default function Home() {
       </p>
       <div className="grid-2">
         <section className="card">
-          <h2>Tickets</h2>
+          <h2>Projects</h2>
           <p className="muted">
-            Members file tickets and see only their own. Staff see every ticket. Anyone else asking for a ticket by its
-            address gets &ldquo;not found&rdquo;.
+            Each project has its own Managers, Contributors, and Readers. Members see only the projects they have a role
+            on; site admins see every project. Anyone else asking for a project by its address gets &ldquo;not found&rdquo;.
           </p>
         </section>
         <section className="card">

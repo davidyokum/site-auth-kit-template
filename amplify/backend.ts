@@ -3,13 +3,13 @@
  * `npm run sandbox` for your own throwaway copy (never deploy by hand, never edit in the console).
  */
 import { defineBackend } from '@aws-amplify/backend';
-import { AuditLogTable, InviteExpirySweep } from 'auth-kit/admin/cdk';
+import { AuditLogTable, InviteExpirySweep, ResourceAccessTable } from 'auth-kit/admin/cdk';
 import { applyAuthStandard, formatSender } from 'auth-kit/amplify';
 import { site } from '../site.config';
 import { senderDisplayName } from '../site.families';
 import { auth, authOptions } from './auth/resource';
 import { SsrComputeRole } from './compute-role';
-import { TicketsTable } from './data/tickets-table';
+import { ProjectsTable } from './data/projects-table';
 
 const backend = defineBackend({ auth });
 
@@ -51,20 +51,28 @@ new InviteExpirySweep(data, 'InviteExpiry', {
   // maxPeople: 5000, // the default; a bigger pool fails each run (and alarms) until raised
 });
 
-// The sample app's records. Replace with your own tables.
-const tickets = new TicketsTable(data, 'Tickets');
+// Who has which role on which item (auth-kit ADR 0022): Manager, Contributor, or Reader on one
+// project. Point-in-time recovery, deletion protection, retained if the stack is deleted, and table
+// deletion denied to everyone; the server may only read and write its items. Every change to it is
+// also written to the audit log, by the app.
+const resourceAccess = new ResourceAccessTable(data, 'ResourceAccess');
+
+// The sample app's items. Replace with your own tables (keep the resource access table).
+const projects = new ProjectsTable(data, 'Projects');
 
 const compute = new SsrComputeRole(data, 'SsrCompute', {
   userPool: backend.auth.resources.userPool,
   auditLog,
-  tickets,
+  resourceAccess,
+  projects,
   sesIdentity: site.email.fromAddress.slice(site.email.fromAddress.lastIndexOf('@') + 1),
 });
 
 backend.addOutput({
   custom: {
     auditLogTable: auditLog.tableName,
-    ticketsTable: tickets.tableName,
+    resourceAccessTable: resourceAccess.tableName,
+    projectsTable: projects.tableName,
     computeRoleArn: compute.role.roleArn,
   },
 });

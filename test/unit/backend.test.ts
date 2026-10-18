@@ -7,21 +7,27 @@ import { Match, Template } from 'aws-cdk-lib/assertions';
 import { UserPool } from 'aws-cdk-lib/aws-cognito';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { AuditLogTable, InviteExpirySweep } from 'auth-kit/admin/cdk';
+import { AuditLogTable, InviteExpirySweep, ResourceAccessTable } from 'auth-kit/admin/cdk';
+import { RESOURCE_TABLE_SCHEMA } from 'auth-kit/resources';
 import { describe, expect, it } from 'vitest';
 import { SsrComputeRole } from '@/amplify/compute-role';
-import { TicketsTable } from '@/amplify/data/tickets-table';
-import { TICKETS_SCHEMA } from '@/amplify/data/tickets-table.schema';
+import { ProjectsTable } from '@/amplify/data/projects-table';
+import { PROJECTS_SCHEMA } from '@/amplify/data/projects-table.schema';
 
 function synth(context: Record<string, string> = {}) {
   const app = new App({ context });
   const stack = new Stack(app, 'Site', { env: { account: '111122223333', region: 'us-east-1' } });
   const pool = new UserPool(stack, 'Pool');
   const auditLog = new AuditLogTable(stack, 'AuditLog');
-  const tickets = new TicketsTable(stack, 'Tickets');
-  new SsrComputeRole(stack, 'Compute', { userPool: pool, auditLog, tickets, sesIdentity: 'example.com' });
+  const resourceAccess = new ResourceAccessTable(stack, 'ResourceAccess');
+  const projects = new ProjectsTable(stack, 'Projects');
+  new SsrComputeRole(stack, 'Compute', { userPool: pool, auditLog, resourceAccess, projects, sesIdentity: 'example.com' });
   return Template.fromStack(stack);
 }
+
+type Table = { DeletionPolicy?: string; Properties: { KeySchema: { AttributeName: string }[]; GlobalSecondaryIndexes?: { IndexName: string }[] } };
+const tableNamed = (template: Template, prefix: string) =>
+  Object.entries(template.findResources('AWS::DynamoDB::GlobalTable')).find(([id]) => id.startsWith(prefix))?.[1] as Table | undefined;
 
 type Statement = { Action: string | string[]; Effect: string; Resource: unknown };
 const allStatements = (template: Template): Statement[] =>
@@ -30,31 +36,40 @@ const allStatements = (template: Template): Statement[] =>
   );
 const actionsOf = (s: Statement) => (Array.isArray(s.Action) ? s.Action : [s.Action]);
 
-describe('the tickets table', () => {
+describe('the projects table', () => {
   it('is protected outside sandboxes: deletion protection, point-in-time recovery, retained on stack delete', () => {
     const template = synth({ 'amplify-backend-type': 'branch' });
     template.hasResource('AWS::DynamoDB::GlobalTable', {
       DeletionPolicy: 'Retain',
       Properties: Match.objectLike({
-        KeySchema: [{ AttributeName: TICKETS_SCHEMA.partitionKey, KeyType: 'HASH' }],
+        KeySchema: [{ AttributeName: PROJECTS_SCHEMA.partitionKey, KeyType: 'HASH' }],
         Replicas: [Match.objectLike({ DeletionProtectionEnabled: true, PointInTimeRecoverySpecification: { PointInTimeRecoveryEnabled: true } })],
       }),
     });
   });
 
-  it('has the owner and staff indexes the server queries', () => {
-    const template = synth();
-    const tables = template.findResources('AWS::DynamoDB::GlobalTable');
-    const indexes = Object.values(tables).flatMap(
-      (t) => (t as { Properties: { GlobalSecondaryIndexes?: { IndexName: string }[] } }).Properties.GlobalSecondaryIndexes ?? [],
-    );
-    expect(indexes.map((i) => i.IndexName)).toEqual(expect.arrayContaining(['byOwner', 'recent']));
+  it('has the index the server queries for every project', () => {
+    expect(tableNamed(synth(), 'Projects')?.Properties.GlobalSecondaryIndexes?.map((i) => i.IndexName)).toEqual(['recent']);
   });
 
   it('is throwaway in a sandbox', () => {
-    const template = synth({ 'amplify-backend-type': 'sandbox' });
-    const tickets = Object.entries(template.findResources('AWS::DynamoDB::GlobalTable')).find(([id]) => id.startsWith('Tickets'));
-    expect(tickets?.[1]).toMatchObject({ DeletionPolicy: 'Delete' });
+    expect(tableNamed(synth({ 'amplify-backend-type': 'sandbox' }), 'Projects')).toMatchObject({ DeletionPolicy: 'Delete' });
+  });
+});
+
+describe('the resource access table (auth-kit ResourceAccessTable: who has which role on which project)', () => {
+  it('is protected and keyed as auth-kit’s store expects, with the byPerson index for "my projects"', () => {
+    const access = tableNamed(synth({ 'amplify-backend-type': 'branch' }), 'ResourceAccess');
+    expect(access).toMatchObject({ DeletionPolicy: 'Retain' });
+    expect(access?.Properties.KeySchema.map((k) => k.AttributeName)).toEqual([RESOURCE_TABLE_SCHEMA.partitionKey, RESOURCE_TABLE_SCHEMA.sortKey]);
+    expect(access?.Properties.GlobalSecondaryIndexes?.map((i) => i.IndexName)).toEqual(['byPerson']);
+  });
+
+  it('amplify/backend.ts creates it, grants the compute role, and publishes its name for the app', () => {
+    const backend = readFileSync(join(import.meta.dirname, '..', '..', 'amplify', 'backend.ts'), 'utf8');
+    expect(backend).toMatch(/new ResourceAccessTable\(data, 'ResourceAccess'\)/);
+    expect(backend).toMatch(/resourceAccessTable: resourceAccess\.tableName/);
+    expect(backend).toMatch(/projectsTable: projects\.tableName/);
   });
 });
 
@@ -80,9 +95,15 @@ describe('the SSR compute role', () => {
     expect(JSON.stringify(ses[0]?.Resource)).toContain('identity/example.com');
   });
 
-  it('touches DynamoDB only with GetItem, PutItem, and Query: no scans, updates, or deletes', () => {
-    const dynamo = allStatements(template).flatMap(actionsOf).filter((a) => a.startsWith('dynamodb:'));
-    expect(new Set(dynamo)).toEqual(new Set(['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:Query']));
+  it('touches DynamoDB only with the calls the stores make: no scans or updates; deletes only on the access table', () => {
+    const statements = allStatements(template).filter((s) => actionsOf(s).some((a) => a.startsWith('dynamodb:')));
+    const dynamo = statements.flatMap(actionsOf);
+    expect(new Set(dynamo)).toEqual(new Set(['dynamodb:GetItem', 'dynamodb:BatchGetItem', 'dynamodb:PutItem', 'dynamodb:DeleteItem', 'dynamodb:Query']));
+    for (const forbidden of ['dynamodb:Scan', 'dynamodb:UpdateItem', 'dynamodb:BatchWriteItem']) expect(dynamo).not.toContain(forbidden);
+    // DeleteItem (removing someone's access) only on the resource access table.
+    const deletes = statements.filter((s) => actionsOf(s).includes('dynamodb:DeleteItem'));
+    expect(deletes.length).toBeGreaterThan(0);
+    for (const s of deletes) expect(JSON.stringify(s.Resource)).toMatch(/ResourceAccess/);
   });
 
   it('grants no wildcard actions', () => {

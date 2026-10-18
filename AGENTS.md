@@ -30,11 +30,14 @@ Fill in when the site is created (03 §2 Assurance: tier, pool, and account are 
    `auth.requireCan('…')` (route handlers wrapped in `withAuthErrors`). The proxy is a first
    checkpoint, never the only one. A new public page goes in `lib/public-routes.ts` (exact paths,
    never a wildcard) and gets a matrix row that says it's public.
-4. **Capabilities, not role names.** Ask `requireCan('tickets.read-all')`, never "is she an admin".
+4. **Capabilities, not role names.** Ask `requireCan('people.manage')`, never "is she an admin".
    Group names appear only in `lib/capabilities.ts`.
-5. **Records answer 404 to anyone else.** A route that takes a record ID loads the record and calls
-   `auth.requireRecordAccess(user, record, { owner, members, coveredBy })`. Lists are filtered in
-   the query, on the server.
+5. **Items answer 404 to anyone without access.** A page, route, or action that takes an item's ID
+   calls `requireResourceRole('project', id, 'view' | 'edit' | …)` first (`pages.` on pages): the
+   person's role on that item (Manager, Contributor, Reader) or their site role's floor. Lists come
+   from `auth.listMyResources`, filtered on the server. Access changes go through
+   `resourceActions()` (lib/resource-actions.ts), which checks live, keeps a Manager, and logs.
+   Screens use the item's noun, never "resource" or "record".
 6. **Run the auth matrix.** Every page and route needs a row in `test/matrix/auth-matrix.test.ts`
    (an uncovered route fails it). Server actions aren't in the matrix: test them in
    `test/unit/actions.test.ts`. Before you finish: `npm run check`.
@@ -76,15 +79,16 @@ npm run personas:seed    # seed personas into the sandbox (account-checked)
 - `components/auth-scene.tsx`, `components/auth-card.tsx` the sign-in card on the site's backdrop;
   `lib/backdrop.ts` what it draws and the build's lock check (next.config.ts); never derive the
   backdrop at build time, and change it only with `npm run backdrop:pick` or `backdrop:lock`
-- `amplify/` the backend: auth preset (WAF rule modes in `auth/resource.ts`), audit log, invite-expiry schedule, tickets table, SSR compute role
+- `amplify/` the backend: auth preset (WAF rule modes in `auth/resource.ts`), audit log, invite-expiry schedule, resource access table, projects table, SSR compute role
 - `proxy.ts` default-deny proxy, token checks, session refresh, per-request CSP
 - `lib/auth.ts` `auth` and `pages` guards; `lib/capabilities.ts` the one capability map
 - `lib/admin.ts`, `lib/audit-log.ts`, `lib/alerts.ts` the admin area's actions, log, and alerts;
   `lib/email.ts` the sender, Reply-To, and footer on the email the site sends
-- `lib/tickets/` the sample records (replace with your own; keep the pattern)
+- `lib/resources.ts` the resource types (project) and their switches, and the membership store; `lib/resource-actions.ts` the access actions; `lib/action-response.ts` their answers as HTTP
+- `lib/projects/` the sample items (replace with your own; keep the pattern)
 - `lib/dev/` dev-only code (see its README); `app/api/dev/sign-in/route.dev.ts` "Sign in as…";
   `app/dev/backdrops/page.dev.tsx` and `app/api/dev/backdrop/route.dev.ts` the backdrop picker
-- `app/` pages: `/` and `/sign-in` public; `/account`, `/app` members; `/admin` every admin role (README, "Roles")
+- `app/` pages: `/` and `/sign-in` public; `/account`, `/app`, `/app/projects` members (each project by its resource roles: README, "Projects"); `/admin` every admin role (README, "Roles")
 - `test/unit/` unit and static checks; `test/matrix/` the auth matrix
 
 ## Git

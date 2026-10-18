@@ -2,7 +2,7 @@
 
 The starter site for David Yokum's websites: a small, real Next.js 16 (App Router) site on AWS Amplify Gen 2, wired to [auth-kit](https://github.com/davidyokum/auth-kit). It meets the login standard out of the box (passkey-first sign-in, server-side checks on every route, an admin area with an append-only log, and a localhost kit for signing in as test personas) and the tests fail if a change breaks it.
 
-> Pre-release, like auth-kit (`v0.1.6-alpha`). Deployed once, as a private demo (2026-10-17): see [Verified on a live deploy, and what's left](#verified-on-a-live-deploy-and-whats-left).
+> Pre-release, like auth-kit (`v0.1.7-alpha`). Deployed once, as a private demo (2026-10-17): see [Verified on a live deploy, and what's left](#verified-on-a-live-deploy-and-whats-left).
 
 Comments cite the login standard as "03 §2" (its rules) and "03 §1" (its tiers). The standard itself is kept privately; [auth-kit's README](https://github.com/davidyokum/auth-kit#how-the-standard-maps-to-the-code) maps every rule to the code that enforces it.
 
@@ -13,7 +13,8 @@ Comments cite the login standard as "03 §2" (its rules) and "03 §1" (its tiers
 | The user pool: invite-only, passkey first, then password + authenticator code, then emailed code; MFA optional with TOTP required of password users; 60-minute tokens, 30-day refresh (Tier 2); deletion protection; WAF rate rules (the sign-in rule counts first, the overall rule blocks); the site-wide role groups ([Roles](#roles)) | `amplify/auth/resource.ts`, `amplify/backend.ts` (auth-kit's preset) |
 | Default-deny proxy that verifies tokens, refreshes sessions server-side, and sets a per-request nonce CSP | `proxy.ts`, `lib/security-headers.ts` |
 | A guard on every page, layout, route handler, and server action; one capability map | `lib/auth.ts`, `lib/capabilities.ts` |
-| Pages: `/` (public), `/sign-in`, `/account` (My account), `/account/authenticator`, `/app` (members' tickets; another member's ticket is a 404), `/admin` (People and Activity, for every admin role; what each may change follows its role); `/api/tickets` (sample API) | `app/` |
+| Pages: `/` (public), `/sign-in`, `/account` (My account), `/account/authenticator`, `/app` (members' home), `/app/projects` and `/app/projects/[id]` (the sample items, with "Who has access"; no access is a 404), `/admin` (People and Activity, for every admin role; what each may change follows its role); `/api/projects` (sample API) | `app/` |
+| Access to one item: Manager, Contributor, Reader on each project, on top of the site role; every change audited; a Manager can invite someone new to one project, and the admins are told ([Projects](#projects-access-to-one-item)) | `lib/resources.ts`, `lib/resource-actions.ts`, `amplify/backend.ts` (auth-kit's `ResourceAccessTable`) |
 | The sign-in card on the site's backdrop (sign-in, error, and not-found pages), the family's owner line and colors, the email hint, and a local backdrop picker | `components/auth-scene.tsx`, `components/auth-card.tsx`, `lib/backdrop.ts`, `app/dev/backdrops/page.dev.tsx` |
 | Append-only audit log, grant/removal alerts, invite expiry (an hourly schedule disables invites unused for 7 days), SSR compute role with exact permissions | `lib/audit-log.ts`, `lib/alerts.ts`, `amplify/backend.ts`, `amplify/compute-role.ts` |
 | Localhost kit: personas, "Sign in as…", environment ribbon, `[DEV]` tab title, dev code kept out of builds | `personas.json`, `lib/dev/`, `app/api/dev/sign-in/route.dev.ts` |
@@ -36,8 +37,30 @@ Every site has the same site-wide admin roles (auth-kit [ADR 0020](https://githu
 - **One owner.** The owner role is never granted, not even by the owner. It moves only by **Transfer ownership…** (in the role picker, owner only): to someone who has signed in, with a reason, their address typed out, and a recent sign-in; both of you are emailed, and you become Super admin. Nobody can disable, demote, or delete the owner, and the invite-expiry schedule never disables them. The People page flags a site with no owner, or more than one.
 - **Grants go down, never sideways or up.** You grant, and act on, only roles below your own, so only the owner grants Super admin, and Super admins can't manage each other. Nobody changes their own role. Every grant needs a reason and a recent sign-in; a Super admin grant also emails the owner.
 - **Admin – view only and Admin – content only** open the admin area and the Activity log and see the People list, but can't change anyone.
-- **Members** aren't admins. What they can see and do with a particular project, plan, or ticket is decided on that item (here: tickets are their owner's, and staff with `tickets.read-all` see all of them), never by these roles.
-- The People page's role picker shows each role's can and can't, a **Compare roles** grid (this table, from auth-kit's `ROLE_MATRIX`), and the note "These roles are for running the site. Access to individual projects, plans, and other items is managed on each one." Group names appear only in `lib/capabilities.ts`, which adds the sample's `tickets.read-all` to Admin – content & people and up.
+- **Members** aren't admins. What they can see and do with a particular project is decided on that project, with a resource role ([Projects](#projects-access-to-one-item)), never by these roles. On every project the site role is a floor: Admin – view only sees it, Admin – content only also edits it, Admin – content & people and above also choose who has access.
+- The People page's role picker shows each role's can and can't, a **Compare roles** grid (this table, from auth-kit's `ROLE_MATRIX`), and the note "These roles are for running the site. Access to individual projects, plans, and other items is managed on each one.", linked to the projects, with the three resource roles summarized under it. Group names appear only in `lib/capabilities.ts`.
+
+## Projects: access to one item
+
+The sample feature is projects, and each project has its own people (auth-kit [ADR 0022](https://github.com/davidyokum/auth-kit/blob/main/docs/decisions/0022-resource-roles.md)). Screens use the item's own word ("Who has access to this project"); code calls these resource roles.
+
+| Role on a project | Can | Can't |
+|---|---|---|
+| Manager | See and edit it, choose who has access, invite someone new to it | Remove the last Manager (every project keeps at least one) |
+| Contributor | See and edit it | Change who has access |
+| Reader | See it | Edit it or change who has access |
+
+On any project, a person gets whichever allows more: their role on it, or their site role, which counts on every project (Admin – view only: see; Admin – content only: see and edit; Admin – content & people, Super admin, Owner: see, edit, and choose who has access).
+
+- **Who creates projects:** site admins who manage people, choosing each one's Manager (themselves by default). Members see only the projects they have a role on. Two switches in `lib/resources.ts` change that per type: `selfServiceCreate` (any member creates one and becomes its Manager) and `sharedDirectory` (everyone signed in sees every project, read-only). Both are off.
+- **`/app/projects`:** your projects (`auth.listMyResources`), or every project for a site role that sees them all, each with your role; the create form if you may create.
+- **`/app/projects/[id]`:** `pages.requireResourceRole('project', id, 'view')` before anything is read, so anyone without access gets "not found". The edit form if you may edit (saved with `requireResourceRole(…, 'edit', { live: true })`, audited, and refused over someone else's newer edit). **Who has access** (auth-kit's `WhoHasAccess`): Managers and site admins who manage people add someone by email with a role picker that says what each role can and can't do, change roles, and remove people; anyone with a role can leave. The last Manager can't leave or be demoted, unless a site admin names the new Manager in the same step.
+- **Inviting someone new:** a Manager can invite an address with no account. It's a member-level account (no admin role) with access to that one project; the site's admins who manage people get an email about every such invite, and if that email can't be sent, the invite is undone.
+- **Every access change is audited**, intent before and result after, naming the person and the project; the Activity page shows them. Disabling someone on the People page removes their project roles too; a project left without a Manager is listed in that entry, and admins who manage people can make someone its Manager.
+- **Data:** `amplify/data/projects-table.ts` holds the projects; auth-kit's `ResourceAccessTable` (in `amplify/backend.ts`) holds who has which role, with point-in-time recovery and deletion protection. The compute role gets exactly the calls each store makes.
+- **API:** `GET`/`POST /api/projects`, `GET`/`PATCH /api/projects/[id]`, `GET`/`PUT /api/projects/[id]/access` (`PUT { email, role }` gives an existing account a role, or changes it).
+
+**Your own items:** replace the projects (`lib/projects/`, `amplify/data/projects-table*.ts`, `app/app/projects/`, `app/api/projects/`) and keep the pattern: declare your type in `lib/resources.ts` (its noun is what screens say), call `requireResourceRole(type, id, …)` in every page, route, and action that takes an ID, list with `listMyResources`, create with `resourceActions().create({ type, run })` so the item and its first Manager are written together, and put `WhoHasAccess` on the item's page. Several types share the one access table.
 
 ## Start a new site from this template
 
@@ -53,7 +76,7 @@ You need Node 22, the AWS CLI signed in to the account you'll deploy to, and a d
 7. **Seed the personas:** `cp .env.local.example .env.local`, then `npm run personas:seed`. It refuses anything but a sandbox pool, creates each persona with a password and an authenticator, and writes their secrets to `.env.local` (never printed).
 8. **Run it:** `npm run dev`, open http://app.localhost:3000, and pick a persona from **Sign in as…** in the blue ribbon.
 9. **Choose the backdrop:** `npm run backdrop:pick` opens nine variations behind your real sign-in card; **Use this one** writes it into `site.config.ts`, locked. (Or `npm run backdrop:lock` to keep the one proposed from the site's name.) Deploys fail until it's locked.
-10. **Make it yours.** Replace the sample tickets (`lib/tickets/`, `amplify/data/`, `app/app/`) with your own records, keeping the pattern: guards on the server, lists filtered in the query, 404 for other people's records. Add a matrix row for every page and route you add. Fill in the site record in `AGENTS.md`.
+10. **Make it yours.** Replace the sample projects with your own items, keeping the pattern ([Projects](#projects-access-to-one-item)): guards on the server, access checked on each item (`requireResourceRole`), lists from `listMyResources`, 404 for anyone without access. Add a matrix row for every page and route you add. Fill in the site record in `AGENTS.md`.
 11. **Check:** `npm run check` (typecheck, lint, unit tests, build, production-build check, auth matrix).
 
 Without a sandbox, `npm run outputs:placeholder` writes a clearly fake `amplify_outputs.json` so the site builds and the tests run, but nothing can sign in.
@@ -82,7 +105,7 @@ Merging to `main` deploys the live site. Once it's live, work on branches.
 |---|---|
 | `npm run typecheck` | The app and `amplify/` type-check (with the dev aliases resolved to their production modules) |
 | `npm run lint` | Next's rules, no `dangerouslySetInnerHTML`, no dev or test imports from code that ships; zero warnings |
-| `npm test` | Unit and static checks: a guard on every page, layout, route handler, and server action; origin checks (against the configured origin) on data-changing routes; `requireRecordAccess` on record routes; the CSP and the proxy's CSP hook; the error page's "couldn't check"; the capability map; the family's email text, sender, Reply-To, and footer; the preflight; the compute role's exact IAM permissions (CDK synthesis); no secrets, real pool IDs, or account and app IDs other than the site's own (`deploy.config.json`) in the repo; tests can't reach AWS |
+| `npm test` | Unit and static checks: a guard on every page, layout, route handler, and server action; origin checks (against the configured origin) on data-changing routes; `requireResourceRole` on every page and route that takes an item's ID; the CSP and the proxy's CSP hook; the error page's "couldn't check"; the capability map; the family's email text, sender, Reply-To, and footer; the preflight; the compute role's exact IAM permissions (CDK synthesis); no secrets, real pool IDs, or account and app IDs other than the site's own (`deploy.config.json`) in the repo; tests can't reach AWS |
 | `npm run build` + `npm run check:prod-build` | A production build with no dev sign-in code, no matrix server code, no backdrop picker, and no `/api/dev/sign-in` route. On Amplify (`AWS_BRANCH` set) the build also fails if the backdrop isn't locked; elsewhere it warns |
 | `npx auth-kit check-dev-route` (CI) | The running production server answers forged requests to the dev routes (`/api/dev/sign-in`, `/api/dev/backdrop`, `/dev/backdrops`) with 404 |
 | `npm run test:matrix` | The auth matrix, below |
@@ -91,9 +114,10 @@ Merging to `main` deploys the live site. Once it's live, work on branches.
 
 `test/matrix/` starts the real app under `next dev` with no AWS, through auth-kit's `startMatrixServer`: a local test issuer signs each persona's session, and auth-kit's matrix server mode (behind `@/dev-matrix`, never in a build) trusts only that issuer and answers the way Cognito does from a scripted fixture. Then auth-kit's `assertAuthMatrix` sends every request twice, through the proxy and with the proxy stepped aside (so a route that leans on the proxy for its 401 fails), and checks coverage against the build's route manifest: a route without a row fails, and so does a row for a route that doesn't exist.
 
-- **Routes:** `/`, `/sign-in`, `/account`, `/account/authenticator`, `/app`, `/app/tickets/:id`, `/admin`, `/admin/people`, `/admin/activity`, `GET` and `POST /api/tickets`, `GET /api/tickets/:id`.
+- **Routes:** `/`, `/sign-in`, `/account`, `/account/authenticator`, `/app`, `/app/projects`, `/app/projects/:id`, `/admin`, `/admin/people`, `/admin/activity`, `GET` and `POST /api/projects`, `GET` and `PATCH /api/projects/:id`, `GET` and `PUT /api/projects/:id/access`.
+- **Seeded access:** before the rows run, `admin` (Admin – content & people) creates project A through the API, which makes them its Manager, and gives `member` the Contributor role. So on project A the member sees and edits but can't share (403), the second member gets 404 everywhere, Admin – view only sees it but can't edit it (403), Admin – content only edits it but can't share it, and admins who manage people do everything. Edits and access changes re-read the person live, so the demoted admin gets 404 there.
 - **Personas:** anonymous, member, a second member, one per admin role (`adminView`, `adminContent`, `admin` for Admin – content & people, `superadmin`, `owner`), and four lifecycle cases: a password user without an authenticator (sent to setup, 403 from APIs), a demoted admin (the token still says admin; admin pages re-read live and refuse), a disabled admin and a signed-out-everywhere session (Cognito refuses their tokens, so every check fails).
-- **Also checked:** sign-in redirects carry a safe return path; lists are filtered on the server; a POST from any origin but the configured one gets 403; bad input gets 400/415; a forged token is refused; private responses are `no-store`; every script tag carries the request's CSP nonce, and the proxy's redirects carry a fresh one; My account shows from the first paint (the authenticator gate follows the page's guard); "Sign in as…" is closed without `ALLOW_DEV_SIGNIN=1`.
+- **Also checked:** sign-in redirects carry a safe return path; lists are filtered on the server (the member's list has project A as Contributor, the second member's doesn't, every admin's does); the project page shows "Who has access" to everyone who can see it and "Share this project" only to its Managers; the only Manager can't demote themselves (409 `last_manager`); a POST from any origin but the configured one gets 403; bad input gets 400/415; a forged token is refused; private responses are `no-store`; every script tag carries the request's CSP nonce, and the proxy's redirects carry a fresh one; My account shows from the first paint (the authenticator gate follows the page's guard); "Sign in as…" is closed without `ALLOW_DEV_SIGNIN=1`.
 
 Server actions aren't in the route manifest; `test/unit/actions.test.ts` covers them.
 
@@ -114,6 +138,7 @@ What each email gets:
 |---|---|---|---|---|
 | Sign-in and verification codes | Cognito (`amplify/auth/resource.ts`) | yes | yes | no |
 | Invites; the owner's alerts (Super admin granted, ownership transferred) | auth-kit's SES mailer (`lib/email.ts`, `lib/admin.ts`) | yes | yes | yes |
+| A project Manager's invite, and the admins' alert about it | auth-kit's SES mailer (`lib/email.ts`, `lib/resource-actions.ts`) | yes | yes | yes |
 | The owner's unused-invite warning, from the hourly schedule | auth-kit's sweep (`amplify/backend.ts`) | yes | no | no |
 | Grant and removal alerts | `lib/alerts.ts` | yes | yes | yes |
 
@@ -146,6 +171,8 @@ npm run check
 ```
 
 Commit the lockfile: it pins the tarball's sha512, so `npm ci` refuses a tarball that changed. Only auth-kit's entries should change; if `npm i` also drops bundled (`inBundle`) entries elsewhere, put them back, or `npm ci` fails on a clean checkout. Read auth-kit's CHANGELOG for breaking changes first.
+
+**A site made before resource roles** (auth-kit 0.1.7: per-item records checked with `requireRecordAccess`, which still works for one release): add `ResourceAccessTable` to `amplify/backend.ts` with its grant and output, declare your types in `lib/resources.ts` and pass `resources` to `createServerAuth` (`lib/auth.ts`), give each record's owner a Manager role on it (a one-time script through `resourceActions().create`), then move each check to `requireResourceRole` and pass `removeResourceMemberships` to the People actions. This template's projects are the worked example; auth-kit [ADR 0022](https://github.com/davidyokum/auth-kit/blob/main/docs/decisions/0022-resource-roles.md#migration) has the steps.
 
 **A site made before the site-wide roles** (groups `superadmin`, `admin`, `editor`, `viewer`): the next deploy deletes `admin`, `editor`, and `viewer` and their memberships, so write down who held each first. Map `superadmin` → `superadmin` (and add one person to `owner` in the Cognito console), `admin` → `admin-content-people`, `editor` → `admin-content`, `viewer` → `admin-view`, then re-grant from the People page. Copy this template's `lib/capabilities.ts`, `personas.json`, and `/admin` pages as the starting point. auth-kit [ADR 0020](https://github.com/davidyokum/auth-kit/blob/main/docs/decisions/0020-site-wide-roles.md#migration-from-superadmin--admin--editor--viewer) has the steps.
 

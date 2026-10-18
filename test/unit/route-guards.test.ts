@@ -36,10 +36,13 @@ const exportedNames = (file: string) => {
   return [...declared, ...listed].sort();
 };
 
-/** A server-side check from lib/auth.ts, or auth-kit's People actions (which check live themselves). */
-const GUARD = /\b(?:pages|auth)\.require(?:User|Can|Group)\(|\bpeopleActions\(\)\.forms\.\w+\(/;
+/**
+ * A server-side check from lib/auth.ts, or auth-kit's People or resource actions (which check live
+ * themselves: the acting person, then their access to the item).
+ */
+const GUARD = /\b(?:pages|auth)\.require(?:User|Can|Group|ResourceRole)\(|\b(?:peopleActions|resourceActions)\(\)\.forms\.\w+\(/;
 
-/** The URL path a page file serves, e.g. app/app/tickets/[id]/page.tsx → /app/tickets/[id]. */
+/** The URL path a page file serves, e.g. app/app/projects/[id]/page.tsx → /app/projects/[id]. */
 const urlOf = (file: string) => `/${file.replace(/^app\//, '').replace(/\/?page\.tsx$/, '')}`.replace(/\/$/, '') || '/';
 
 describe('every page, layout, route, and action checks on the server', () => {
@@ -97,10 +100,14 @@ describe('every page, layout, route, and action checks on the server', () => {
     }
   });
 
-  it('record pages and routes check the record and answer 404 (requireRecordAccess)', () => {
-    for (const file of appFiles.filter((f) => /\[id\]\/(page\.tsx|route\.ts)$/.test(f))) {
-      expect(source(file), `${file} takes an ID but doesn't call requireRecordAccess`).toMatch(/requireRecordAccess\(/);
+  it('pages and routes that take an item’s ID check access to that item first (requireResourceRole: 404 for no access)', () => {
+    const itemFiles = appFiles.filter((f) => /\[id\]\/(.+\/)?(page\.tsx|route\.ts)$/.test(f));
+    expect(itemFiles.length).toBeGreaterThanOrEqual(3);
+    for (const file of itemFiles) {
+      expect(source(file), `${file} takes an ID but doesn't call requireResourceRole`).toMatch(/\b(?:pages|auth)\.requireResourceRole\('project', id,/);
     }
+    // Nothing uses the deprecated owner-on-record check.
+    for (const file of appFiles) expect(source(file), file).not.toMatch(/requireRecordAccess/);
   });
 
   it('the public list has no wildcards', () => {

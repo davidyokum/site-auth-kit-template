@@ -20,6 +20,7 @@ import { auth } from './auth';
 import { createSiteMailer } from './email';
 import { publicOrigin } from './origin';
 import { outputs } from './outputs';
+import { resourceActions } from './resource-actions';
 
 let people: PeopleActions | undefined;
 
@@ -38,6 +39,10 @@ export function peopleActions(): PeopleActions {
     signInUrl: `${publicOrigin()}/sign-in`,
     inviteDomains: site.inviteDomains,
     onChange: alertOnPeopleChange,
+    // Disabling someone also removes their roles on projects (auth-kit/resources). It's never
+    // blocked: a project left without a Manager is listed in the disable row, and admins who manage
+    // people can still make someone its Manager.
+    removeResourceMemberships: (person) => resourceActions().removeResourceMemberships(person),
     onError: (error, context) => console.error(`[admin] ${context}:`, error instanceof Error ? error.message : error),
     ...(matrix && { cognito: matrix.peopleCognito }),
   });

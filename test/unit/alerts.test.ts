@@ -52,7 +52,7 @@ describe('grants and removals alert a named person (lib/alerts.ts)', () => {
   });
 
   it('stays quiet for changes that grant or remove nothing, and for failed attempts', () => {
-    for (const action of ['people.resend', 'people.signOutEverywhere', 'tickets.create']) expect(isGrantOrRemoval(event({ action }))).toBe(false);
+    for (const action of ['people.resend', 'people.signOutEverywhere', 'projects.update', 'resources.add']) expect(isGrantOrRemoval(event({ action }))).toBe(false);
     expect(isGrantOrRemoval(event({ outcome: 'failed' }))).toBe(false);
   });
 
