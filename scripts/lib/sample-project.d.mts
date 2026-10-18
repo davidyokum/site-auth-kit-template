@@ -13,5 +13,5 @@ export declare function sampleAccessCommit(
 ): {
   expectedVersion: number | null;
   meta: { type: 'project'; id: string; version: number; managers: number; createdAt: string; createdBy: string; updatedAt: string; updatedBy: string };
-  put: { type: 'project'; id: string; sub: string; role: string; email: string; addedBy: string; addedByEmail: string; addedAt: string }[];
+  put: { type: 'project'; id: string; sub: string; role: 'manager' | 'contributor' | 'reader'; email: string; addedBy: string; addedByEmail: string; addedAt: string }[];
 } | null;

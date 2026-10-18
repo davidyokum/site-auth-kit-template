@@ -100,3 +100,16 @@ describe('the static headers (next.config.ts)', () => {
     expect(policy).toContain('camera=()');
   });
 });
+
+describe('AWS WAF’s JavaScript integration (sites with a site web ACL)', () => {
+  it('lets it reach its own host, and nothing else new', () => {
+    const nonce = 'AAAAAAAAAAAAAAAAAAAAAA==';
+    const without = contentSecurityPolicy({ nonce, dev: false, region: 'us-east-1' });
+    expect(without).not.toContain('awswaf');
+    const withWaf = contentSecurityPolicy({ nonce, dev: false, region: 'us-east-1', wafIntegrationUrl: 'https://abcd1234.edge.sdk.awswaf.com/abcd1234/efgh5678/challenge.js' });
+    expect(/connect-src ([^;]+)/.exec(withWaf)?.[1]).toContain('https://abcd1234.edge.sdk.awswaf.com');
+    expect(/script-src ([^;]+)/.exec(withWaf)?.[1]).not.toContain('awswaf');
+    expect(() => contentSecurityPolicy({ nonce, dev: false, region: 'us-east-1', wafIntegrationUrl: 'https://evil.example.org/challenge.js' })).toThrow(/isn't AWS WAF/);
+  });
+});
+

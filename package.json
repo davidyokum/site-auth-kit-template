@@ -19,6 +19,8 @@
     "test:matrix": "vitest run --config vitest.matrix.config.ts",
     "check:prod-build": "auth-kit check-prod-build",
     "check": "npm run typecheck && npm run lint && npm test && npm run build && npm run check:prod-build && npm run test:matrix",
+    "setup": "node scripts/setup.mjs",
+    "waf:smoke": "node scripts/waf-smoke-test.mjs",
     "outputs:placeholder": "node scripts/use-placeholder-outputs.mjs",
     "preflight": "node scripts/preflight.mjs",
     "sandbox": "node scripts/preflight.mjs --exec ampx sandbox",
