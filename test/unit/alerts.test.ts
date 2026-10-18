@@ -37,15 +37,18 @@ const event = (over: Partial<AuditEvent>): AuditEvent => ({
 });
 
 describe('grants and removals alert a named person (lib/alerts.ts)', () => {
-  it('alerts on role changes, disables, re-enables, and deletes', () => {
-    for (const action of ['people.changeRole', 'people.disable', 'people.enable', 'people.delete']) {
+  it('alerts on role changes, ownership transfers, disables, re-enables, and deletes', () => {
+    for (const action of ['people.changeRole', 'people.transferOwnership', 'people.disable', 'people.enable', 'people.delete']) {
       expect(isGrantOrRemoval(event({ action }))).toBe(true);
     }
   });
 
   it('alerts on an invite that grants an admin role, not on a member invite', () => {
-    expect(isGrantOrRemoval(event({ action: 'people.invite', after: { role: 'editor' } }))).toBe(true);
+    for (const role of ['superadmin', 'admin-content-people', 'admin-content', 'admin-view']) {
+      expect(isGrantOrRemoval(event({ action: 'people.invite', after: { role } }))).toBe(true);
+    }
     expect(isGrantOrRemoval(event({ action: 'people.invite', after: { role: 'member' } }))).toBe(false);
+    expect(isGrantOrRemoval(event({ action: 'people.invite', after: { role: 'editor' } }))).toBe(false); // a retired name grants nothing
   });
 
   it('stays quiet for changes that grant or remove nothing, and for failed attempts', () => {
@@ -55,10 +58,10 @@ describe('grants and removals alert a named person (lib/alerts.ts)', () => {
 
   it('says who, to whom, what, before and after, why, and when', () => {
     const { subject, text } = describeChange(
-      event({ before: { adminRole: 'viewer' }, after: { adminRole: 'editor' }, reason: 'Covering for a colleague' }),
+      event({ before: { adminRole: 'admin-view' }, after: { adminRole: 'admin-content' }, reason: 'Covering for a colleague' }),
     );
     expect(subject).toContain('changeRole');
-    for (const part of ['admin@example.com', 'person@example.com', 'viewer', 'editor', 'Covering for a colleague', '2026-10-17']) {
+    for (const part of ['admin@example.com', 'person@example.com', 'admin-view', 'admin-content', 'Covering for a colleague', '2026-10-17']) {
       expect(text).toContain(part);
     }
   });

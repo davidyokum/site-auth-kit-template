@@ -113,11 +113,28 @@ describe('the invite-expiry sweep (auth-kit ADR 0019)', () => {
         'cognito-idp:AdminListGroupsForUser',
         'cognito-idp:AdminDisableUser',
         'cognito-idp:AdminRemoveUserFromGroup',
+        'cognito-idp:ListUsersInGroup', // to count the owners: the owner's invite is never disabled
         'dynamodb:PutItem',
         'logs:CreateLogStream',
         'logs:PutLogEvents',
         'lambda:InvokeFunction',
       ]),
     );
+  });
+
+  it('warns the owner, as amplify/backend.ts configures it, sending only from the site’s domain', () => {
+    const backend = readFileSync(join(ROOT, 'amplify', 'backend.ts'), 'utf8');
+    expect(backend).toMatch(/ownerWarnings: \{\s*siteName: site\.name,\s*from: formatSender\(senderDisplayName\(site\), site\.email\.fromAddress\)/);
+    const app = new App();
+    const stack = new Stack(app, 'Site', { env: { account: '111122223333', region: 'us-east-1' } });
+    new InviteExpirySweep(stack, 'InviteExpiry', {
+      userPool: new UserPool(stack, 'Pool'),
+      auditLog: new AuditLogTable(stack, 'AuditLog'),
+      ownerWarnings: { siteName: 'Example Site', from: 'Example Site <noreply@example.com>' },
+    });
+    const template = Template.fromStack(stack);
+    const ses = allStatements(template).filter((st) => actionsOf(st).some((a) => a.startsWith('ses:')));
+    expect(ses.flatMap(actionsOf)).toEqual(['ses:SendEmail']);
+    expect(JSON.stringify(ses[0]?.Resource)).toContain('identity/example.com');
   });
 });

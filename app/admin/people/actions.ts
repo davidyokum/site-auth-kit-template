@@ -2,8 +2,8 @@
 /**
  * The People page's server actions. Library code can't be a server action, so each one wraps
  * auth-kit's form action. Each re-checks the acting person live (`requireCan(…, { live: true })`),
- * validates input, re-reads the target, runs the guardrails, asks for a recent sign-in before a
- * grant or a delete, and logs intent and result (auth-kit ADR 0010, 0011).
+ * validates input, re-reads the target, runs the guardrails (site-wide roles, ADR 0020), asks for a
+ * recent sign-in before a grant, a transfer, or a delete, and logs intent and result (ADR 0010).
  */
 import type { ActionResult } from 'auth-kit/admin';
 import { revalidatePath } from 'next/cache';
@@ -24,6 +24,11 @@ export async function resend(previous: ActionResult | null, data: FormData): Pro
 
 export async function changeRole(previous: ActionResult | null, data: FormData): Promise<ActionResult> {
   return after(await peopleActions().forms.changeRole(previous, data));
+}
+
+/** The owner hands the site to someone who has signed in; the owner becomes Super admin. */
+export async function transferOwnership(previous: ActionResult | null, data: FormData): Promise<ActionResult> {
+  return after(await peopleActions().forms.transferOwnership(previous, data));
 }
 
 export async function disable(previous: ActionResult | null, data: FormData): Promise<ActionResult> {

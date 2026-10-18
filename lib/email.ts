@@ -1,5 +1,5 @@
 /**
- * The email the site sends itself: invites and owner-grant alerts (auth-kit's SES mailer, used by
+ * The email the site sends itself: invites and the owner's alerts (auth-kit's SES mailer, used by
  * lib/admin.ts) and change alerts (lib/alerts.ts). All of it comes from the family's sender name
  * (site.families.ts), carries the help mailbox as Reply-To, and ends with the family footer.
  *
@@ -13,9 +13,12 @@ import {
   createSesInviteMailer,
   type InviteMailer,
   type OwnerAlertNotifier,
+  type OwnerInviteWarningNotifier,
   type RenderedEmail,
   renderInviteEmail,
-  renderOwnerAlertEmail,
+  renderOwnerInviteWarningEmail,
+  renderOwnershipTransferEmail,
+  renderSuperadminGrantEmail,
 } from 'auth-kit/admin';
 import { site as configuredSite } from '@/site.config';
 import { emailFooter, type FamilySite, senderDisplayName } from '@/site.families';
@@ -71,10 +74,14 @@ export function withFooter(email: RenderedEmail, site: EmailSite = configuredSit
 }
 
 /**
- * Invites and owner-grant alerts: auth-kit's SES mailer and its templates, with this site's sender,
- * Reply-To, and footer.
+ * Invites, the owner's alerts (someone was made Super admin; ownership moved), and the warning the
+ * invite-expiry sweep sends about the owner's unused invite: auth-kit's SES mailer and its
+ * templates, with this site's sender, Reply-To, and footer.
  */
-export function createSiteMailer(options: { region: string; client?: SESv2Client }, site: EmailSite = configuredSite): InviteMailer & OwnerAlertNotifier {
+export function createSiteMailer(
+  options: { region: string; client?: SESv2Client },
+  site: EmailSite = configuredSite,
+): InviteMailer & OwnerAlertNotifier & OwnerInviteWarningNotifier {
   const replyTo = replyToAddresses(site);
   return createSesInviteMailer({
     from: senderMailbox(site),
@@ -82,6 +89,8 @@ export function createSiteMailer(options: { region: string; client?: SESv2Client
     ...(options.client && { client: options.client }),
     ...(replyTo.length > 0 && { replyTo }),
     render: (input) => withFooter(renderInviteEmail(input), site),
-    renderOwnerAlert: (alert) => withFooter(renderOwnerAlertEmail(alert), site),
+    renderSuperadminGrant: (alert) => withFooter(renderSuperadminGrantEmail(alert), site),
+    renderOwnershipTransfer: (alert) => withFooter(renderOwnershipTransferEmail(alert), site),
+    renderOwnerInviteWarning: (warning) => withFooter(renderOwnerInviteWarningEmail(warning), site),
   });
 }

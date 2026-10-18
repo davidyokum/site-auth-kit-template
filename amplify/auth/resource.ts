@@ -5,7 +5,8 @@
  * MFA optional with TOTP only (the app requires an authenticator of password users); passwords of
  * 15+ characters with no composition rules; 60-minute tokens and a 30-day refresh token on Tier 2;
  * token revocation; PreventUserExistenceErrors; the Essentials plan with SES email; deletion
- * protection; tags; the groups superadmin (Owner), admin, editor, viewer; and a WAF rate rule.
+ * protection; tags; the site-wide role groups (owner, superadmin, admin-content-people,
+ * admin-content, admin-view; auth-kit ADR 0020); and a WAF rate rule.
  *
  * Amplify fails synthesis unless `defineAuth` is called directly from this file, so the preset
  * returns props for this call; settings `defineAuth` can't express are applied in `backend.ts`
@@ -34,7 +35,7 @@ export const authOptions = {
     ...(site.email.replyTo !== null && { replyTo: site.email.replyTo }),
   },
   passkeys: site.passkeys,
-  // App roles beyond superadmin/admin/editor/viewer live in site.config.ts (the app reads them too).
+  // App roles beyond the site-wide roles live in site.config.ts (the app reads them too).
   appRoles: site.appRoles,
 
   // ---- Rate limiting (auth-kit ADR 0004, 0013, 0017) ----------------------------------------

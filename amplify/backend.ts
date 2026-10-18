@@ -4,8 +4,9 @@
  */
 import { defineBackend } from '@aws-amplify/backend';
 import { AuditLogTable, InviteExpirySweep } from 'auth-kit/admin/cdk';
-import { applyAuthStandard } from 'auth-kit/amplify';
+import { applyAuthStandard, formatSender } from 'auth-kit/amplify';
 import { site } from '../site.config';
+import { senderDisplayName } from '../site.families';
 import { auth, authOptions } from './auth/resource';
 import { SsrComputeRole } from './compute-role';
 import { TicketsTable } from './data/tickets-table';
@@ -33,6 +34,14 @@ const auditLog = new AuditLogTable(data, 'AuditLog');
 new InviteExpirySweep(data, 'InviteExpiry', {
   userPool: backend.auth.resources.userPool,
   auditLog,
+  // The owner's invite is never disabled (a site keeps its one owner; auth-kit ADR 0019, 0020):
+  // when it's unused past 7 days, the sweep emails the owner (and the first alert address) instead,
+  // once a day, from the site's sender. The function may send only from that address's domain.
+  ownerWarnings: {
+    siteName: site.name,
+    from: formatSender(senderDisplayName(site), site.email.fromAddress),
+    ...(site.alertEmails[0] !== undefined && { fallbackEmail: site.alertEmails[0] }),
+  },
   // Site-specific:
   // alarmTopic: an SNS topic someone reads (an email subscription needs one confirmation click):
   //   alarms when a run fails (a due invite wasn't disabled, the pool outgrew maxPeople) or the
