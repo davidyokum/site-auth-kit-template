@@ -67,7 +67,8 @@ describe('the answers (checkAnswers)', () => {
 describe('writing site.config.ts (applyAnswers)', () => {
   const template = readFileSync(join(ROOT, 'site.config.ts'), 'utf8');
 
-  it('rewrites only the setup lines of the template’s own file, and the result is a config the site accepts', async () => {
+  it('rewrites only the setup lines of this site’s own file, and the result is a config the site accepts', async () => {
+    const original = (await load(template)).site as unknown as CheckedSite & { email: { fromAddress: string }; inviteDomains: readonly string[]; backdrop: unknown };
     const { answers } = checkAnswers({ ...good, mode: 'domains', domains: 'example.org', requestsAlso: true, privacyNoticeUrl: '/privacy' }, context);
     const written = applyAnswers(template, answers);
     const { site } = await load(written);
@@ -80,20 +81,21 @@ describe('writing site.config.ts (applyAnswers)', () => {
       accountCreation: { mode: 'domains', domains: ['example.org'], requestsAlso: true },
       privacyNoticeUrl: '/privacy',
       alertEmails: ['owner@example.org'],
-      inviteDomains: ['example.org'],
-      email: { fromAddress: 'noreply@example.com', replyTo: null },
+      // The template's placeholder invite domain becomes the owner's; a site's own stays.
+      inviteDomains: original.inviteDomains.join() === 'example.com' ? ['example.org'] : original.inviteDomains,
+      email: { fromAddress: original.email.fromAddress, replyTo: null },
+      backdrop: original.backdrop,
     });
     expect(siteConfigProblems(site)).toEqual([]);
-    // Everything else is untouched: the same number of lines, and the backdrop line as it was.
+    // Everything else is untouched: the same number of lines.
     expect(written.split('\n').length).toBe(template.split('\n').length);
-    expect(written).toContain('  backdrop: null as SiteBackdrop | null,');
   });
 
   it('writes a site’s own help mailbox, and is idempotent', async () => {
     const { answers } = checkAnswers({ ...good, help: 'reports-help@example.org' }, context);
     const once = applyAnswers(template, answers);
     expect(applyAnswers(once, answers)).toBe(once);
-    expect((await load(once)).site.email).toEqual({ fromAddress: 'noreply@example.com', replyTo: 'reports-help@example.org' });
+    expect((await load(once)).site.email).toMatchObject({ replyTo: 'reports-help@example.org' });
   });
 
   it('refuses a file whose setup line isn’t in the one-line form, instead of guessing', () => {
