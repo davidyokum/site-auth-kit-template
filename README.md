@@ -2,7 +2,7 @@
 
 The starter site for David Yokum's websites: a small, real Next.js 16 (App Router) site on AWS Amplify Gen 2, wired to [auth-kit](https://github.com/davidyokum/auth-kit). It meets the login standard out of the box (passkey-first sign-in, server-side checks on every route, an admin area with an append-only log, and a localhost kit for signing in as test personas) and the tests fail if a change breaks it.
 
-> Pre-release, like auth-kit (`v0.1.7-alpha`). Deployed once, as a private demo (2026-10-17): see [Verified on a live deploy, and what's left](#verified-on-a-live-deploy-and-whats-left).
+> Pre-release, like auth-kit (`v0.1.7-alpha.1`). Deployed once, as a private demo (2026-10-17): see [Verified on a live deploy, and what's left](#verified-on-a-live-deploy-and-whats-left).
 
 Comments cite the login standard as "03 §2" (its rules) and "03 §1" (its tiers). The standard itself is kept privately; [auth-kit's README](https://github.com/davidyokum/auth-kit#how-the-standard-maps-to-the-code) maps every rule to the code that enforces it.
 
