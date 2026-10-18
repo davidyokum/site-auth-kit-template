@@ -110,6 +110,8 @@ describe('the invite-expiry sweep (auth-kit ADR 0019)', () => {
     expect(actions).toEqual(
       new Set([
         'cognito-idp:ListUsers',
+        // auth-kit 0.1.4: the sweep counts owners live, so it never disables the last one.
+        'cognito-idp:ListUsersInGroup',
         'cognito-idp:AdminListGroupsForUser',
         'cognito-idp:AdminDisableUser',
         'cognito-idp:AdminRemoveUserFromGroup',

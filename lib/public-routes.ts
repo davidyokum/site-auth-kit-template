@@ -5,9 +5,11 @@
  *
  * `/api/dev/sign-in` is listed in every environment, as auth-kit's localhost kit requires: under
  * `next dev` the route runs its own gates; in a build it doesn't exist, so the answer is Next's 404
- * (a 401 from the proxy would hide that). `npm run check:prod-build` proves it's absent.
+ * (a 401 from the proxy would hide that). `npm run check:prod-build` proves it's absent. The backdrop
+ * picker's page and write route (`/dev/backdrops`, `/api/dev/backdrop`) are the same: dev-only files
+ * with their own gates, absent from every build.
  */
-export const PUBLIC_ROUTES = ['/', '/api/dev/sign-in'] as const;
+export const PUBLIC_ROUTES = ['/', '/api/dev/sign-in', '/dev/backdrops', '/api/dev/backdrop'] as const;
 
 /** Pages that render for anonymous visitors (they call no guard, or only `getUser` for display). */
 export const PUBLIC_PAGES = ['/', '/sign-in'] as const;

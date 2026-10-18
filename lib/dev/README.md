@@ -9,6 +9,8 @@ Nothing in this folder reaches a deployed build. Three mechanisms keep it out, a
 | `off.tsx` | What `@/dev` means in every build: the same exports, no dev code (a PREVIEW ribbon on preview branches, nothing on the live site) | Default (tsconfig `paths`) |
 | `matrix.on.ts` | What `@/dev-matrix` means under `next dev`: one line re-exporting auth-kit's matrix server mode (`auth-kit/testing/matrix-server`), active only with `AUTH_KIT_MATRIX=1` and a fixture | `withDevKit` points `@/dev-matrix` here only in the dev phase |
 | `matrix.off.ts` | What `@/dev-matrix` means in every build: `null`, always (it imports only a type) | Default (tsconfig `paths`) |
+| `backdrop-picker.tsx` | The backdrop picker's client half (auth-kit/backdrops/picker) behind the real sign-in card | Imported only by `app/dev/backdrops/page.dev.tsx`; the picker carries auth-kit's marker |
+| `backdrop-route.ts` | The picker's "Use this one": writes `site.config.ts` (locked, with a backup) after the localhost gates | Imported only by `app/api/dev/backdrop/route.dev.ts` |
 
 1. **`.dev.ts` routes.** Under `next dev`, `withDevKit` (next.config.ts) adds `dev.ts`/`dev.tsx` to the page extensions, so `route.dev.ts` is a route. In a build it isn't, and nothing imports it.
 2. **The aliases.** `next.config.ts` passes auth-kit's `DEV_ALIAS` and `DEV_MATRIX_ALIAS`, which name exactly these files. Code that ships imports `@/dev` and `@/dev-matrix`, never these files or `auth-kit/testing/matrix-server` by path (ESLint enforces it; `test/unit/route-guards.test.ts` too). Type checks and builds resolve the aliases to the `off` modules.

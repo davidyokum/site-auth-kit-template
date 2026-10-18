@@ -69,16 +69,21 @@ npm run personas:seed    # seed personas into the sandbox (account-checked)
 
 ## Layout
 
-- `site.config.ts` the site's identity, including its family; `deploy.config.json` where it deploys
-- `site.families.ts` the family table: sender display name and email footer text (themes later);
-  the only file allowed to name an employer (with its unit test)
+- `site.config.ts` the site's identity, including its family, its locked backdrop, and its email hint; `deploy.config.json` where it deploys
+- `site.families.ts` the family table: sender display name, email footer, the card's owner and
+  identity lines, and the email hint (colors come from auth-kit/backdrops); the only file allowed to
+  name an employer (with its unit test)
+- `components/auth-scene.tsx`, `components/auth-card.tsx` the sign-in card on the site's backdrop;
+  `lib/backdrop.ts` what it draws and the build's lock check (next.config.ts); never derive the
+  backdrop at build time, and change it only with `npm run backdrop:pick` or `backdrop:lock`
 - `amplify/` the backend: auth preset (WAF rule modes in `auth/resource.ts`), audit log, invite-expiry schedule, tickets table, SSR compute role
 - `proxy.ts` default-deny proxy, token checks, session refresh, per-request CSP
 - `lib/auth.ts` `auth` and `pages` guards; `lib/capabilities.ts` the one capability map
 - `lib/admin.ts`, `lib/audit-log.ts`, `lib/alerts.ts` the admin area's actions, log, and alerts;
   `lib/email.ts` the sender, Reply-To, and footer on the email the site sends
 - `lib/tickets/` the sample records (replace with your own; keep the pattern)
-- `lib/dev/` dev-only code (see its README); `app/api/dev/sign-in/route.dev.ts` "Sign in as…"
+- `lib/dev/` dev-only code (see its README); `app/api/dev/sign-in/route.dev.ts` "Sign in as…";
+  `app/dev/backdrops/page.dev.tsx` and `app/api/dev/backdrop/route.dev.ts` the backdrop picker
 - `app/` pages: `/` and `/sign-in` public; `/account`, `/app` members; `/admin` every admin role (README, "Roles")
 - `test/unit/` unit and static checks; `test/matrix/` the auth matrix
 

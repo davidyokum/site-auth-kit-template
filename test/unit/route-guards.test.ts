@@ -113,13 +113,22 @@ describe('dev-only code stays out of what ships', () => {
     .filter((f) => /\.(ts|tsx)$/.test(f))
     .filter((f) => !/\.dev\.tsx?$/.test(f) && !f.startsWith('lib/dev/'));
 
-  it('only dev-only files import auth-kit/dev, auth-kit/dev/menu, auth-kit/testing, or lib/dev/*', () => {
+  it('only dev-only files import auth-kit/dev, auth-kit/dev/menu, auth-kit/testing, the backdrop picker, or lib/dev/*', () => {
     for (const file of shipped) {
       const imports = [...source(file).matchAll(/from\s+['"]([^'"]+)['"]/g)].map((m) => m[1]);
       for (const spec of imports) {
-        expect(spec, `${file} imports ${spec}`).not.toMatch(/^auth-kit\/(dev|testing)(\/|$)|^@\/lib\/dev\//);
+        expect(spec, `${file} imports ${spec}`).not.toMatch(/^auth-kit\/(dev|testing|backdrops\/picker)(\/|$)|^@\/lib\/dev\//);
       }
     }
+  });
+
+  it('the backdrop picker is a dev-only page and route (they exist only under next dev)', () => {
+    expect(appFiles).toContain('app/dev/backdrops/page.dev.tsx');
+    expect(appFiles).toContain('app/api/dev/backdrop/route.dev.ts');
+    expect(appFiles.filter((f) => f.startsWith('app/dev/') && !/\.dev\.tsx?$/.test(f))).toEqual([]);
+    // Only the picker's client half imports auth-kit's picker.
+    const importers = [...walk(join(ROOT, 'app')), ...walk(join(ROOT, 'components')), ...walk(join(ROOT, 'lib'))].filter((f) => /from\s+['"]auth-kit\/backdrops\/picker['"]/.test(source(f)));
+    expect(importers).toEqual(['lib/dev/backdrop-picker.tsx']);
   });
 
   it('the dev sign-in route is a .dev.ts file (a route only under next dev)', () => {

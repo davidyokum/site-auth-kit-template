@@ -17,6 +17,7 @@ export default defineConfig([
             { name: 'auth-kit/dev', message: 'Dev-only: import it only from lib/dev/kit.ts, lib/dev/on.tsx, next.config.ts, or *.dev.ts routes.' },
             { name: 'auth-kit/dev/menu', message: 'Dev-only: import it only from lib/dev/on.tsx.' },
             { name: 'auth-kit/testing', message: 'Test-only: never import it from app code.' },
+            { name: 'auth-kit/backdrops/picker', message: 'Dev-only: import it only from lib/dev/backdrop-picker.tsx.' },
             {
               name: 'auth-kit/testing/matrix-server',
               message: 'Dev-only: lib/dev/matrix.on.ts re-exports it; app code imports matrixOverrides from @/dev-matrix.',
@@ -29,7 +30,7 @@ export default defineConfig([
   },
   {
     // The places dev-only and test-only code is allowed.
-    files: ['lib/dev/**', 'app/**/*.dev.ts', 'test/**', 'next.config.ts'],
+    files: ['lib/dev/**', 'app/**/*.dev.ts', 'app/**/*.dev.tsx', 'test/**', 'next.config.ts'],
     rules: { 'no-restricted-imports': 'off' },
   },
   globalIgnores(['.next/**', '.next-matrix/**', 'out/**', 'build/**', 'next-env.d.ts', '.amplify/**', 'coverage/**']),
