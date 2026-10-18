@@ -27,6 +27,8 @@
     "sandbox:delete": "node scripts/preflight.mjs --exec ampx sandbox delete",
     "personas:seed": "node scripts/preflight.mjs --pass-account --exec auth-kit seed-personas",
     "projects:seed": "node scripts/seed-sample-project.mjs",
+    "backdrop:pick": "node scripts/backdrop-pick.mjs",
+    "backdrop:lock": "node scripts/backdrop-lock.mjs",
     "preview:password": "node scripts/preview-password.mjs"
   },
   "dependencies": {

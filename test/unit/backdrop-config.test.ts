@@ -162,3 +162,11 @@ describe('the picker’s write route (lib/dev/backdrop-route.ts)', () => {
     unchanged();
   });
 });
+
+describe('the backdrop commands the README and the build’s lock message name', () => {
+  it('are npm scripts', () => {
+    const pkg = JSON.parse(readFileSync(join(import.meta.dirname, '..', '..', 'package.json'), 'utf8')) as { scripts: Record<string, string> };
+    expect(pkg.scripts['backdrop:pick']).toBe('node scripts/backdrop-pick.mjs');
+    expect(pkg.scripts['backdrop:lock']).toBe('node scripts/backdrop-lock.mjs');
+  });
+});
