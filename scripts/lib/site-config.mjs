@@ -12,6 +12,15 @@ import ts from 'typescript';
  * @returns {Promise<{ site: Record<string, unknown> & { name: string, family: string, backdrop: unknown } }>}
  */
 export async function loadSiteConfig(root) {
+  return (await loadSiteModules(root)).config;
+}
+
+/**
+ * site.config.ts and site.families.ts, both.
+ * @param {string} root the project root
+ * @returns {Promise<{ config: { site: Record<string, unknown> & { name: string, family: string, backdrop: unknown } }, families: { FAMILY_HELP_MAILBOX: Record<string, string | null>, SITE_FAMILIES: readonly string[], FAMILY_NAMES_OWNER: Record<string, boolean> } }>}
+ */
+export async function loadSiteModules(root) {
   const dir = mkdtempSync(join(tmpdir(), 'site-config-'));
   try {
     for (const name of ['site.config', 'site.families']) {
@@ -23,7 +32,9 @@ export async function loadSiteConfig(root) {
       // Relative imports between the two files get the .mjs extension Node's loader needs.
       writeFileSync(join(dir, `${name}.mjs`), outputText.replace(/from\s+['"]\.\/(site\.families)['"]/g, "from './$1.mjs'"));
     }
-    return await import(pathToFileURL(join(dir, 'site.config.mjs')).href);
+    const config = await import(pathToFileURL(join(dir, 'site.config.mjs')).href);
+    const families = await import(pathToFileURL(join(dir, 'site.families.mjs')).href);
+    return { config, families };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

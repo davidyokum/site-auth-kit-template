@@ -7,6 +7,9 @@
  * recent sign-in before a grant, a transfer, or a delete, and writes the audit intent before any
  * Cognito call and the result after (auth-kit ADR 0010, 0011).
  *
+ * On request sites (site.config.ts `accountCreation`), the same actions run the "Pending requests"
+ * tab: list, approve (the ordinary invite), decline (silently), and decline up to 100 at once.
+ *
  * Created on first use, not at import: building it needs the public origin (for invite links),
  * which a production build doesn't have until it runs on its branch.
  */
@@ -14,27 +17,34 @@ import 'server-only';
 import { createPeopleActions, type PeopleActions } from 'auth-kit/admin';
 import { matrixOverrides } from '@/dev-matrix';
 import { site } from '@/site.config';
+import { accessRequests, accountMailer, signInHelp } from './accounts';
 import { alertOnPeopleChange } from './alerts';
 import { auditLog } from './audit-log';
 import { auth } from './auth';
-import { createSiteMailer } from './email';
+import type { SiteMailer } from './email';
 import { publicOrigin } from './origin';
-import { outputs } from './outputs';
 import { resourceActions } from './resource-actions';
+import { siteTheme } from './theme';
 
 let people: PeopleActions | undefined;
 
 export function peopleActions(): PeopleActions {
   if (people) return people;
   const matrix = matrixOverrides();
+  const requests = accessRequests();
   people = createPeopleActions({
     auth,
     auditLog: auditLog(),
     // Everyday pools invite with an emailed code: no password, no `email_verified`, and the app's own
-    // email (Cognito's is suppressed), from the family's sender with its Reply-To and footer
-    // (lib/email.ts). The same mailer sends the owner's alerts (a Super admin grant, an ownership
-    // transfer). A Tier 3 admin pool uses inviteMode: 'temporary-password'.
-    mailer: matrix?.mailer ?? createSiteMailer({ region: outputs.auth.aws_region }),
+    // email (Cognito's is suppressed), from the family's sender with the help address as Reply-To and
+    // the card's footer (lib/email.ts). The same mailer sends the owner's alerts (a Super admin grant,
+    // an ownership transfer). A Tier 3 admin pool uses inviteMode: 'temporary-password'.
+    mailer: matrix?.mailer ?? (accountMailer() as SiteMailer),
+    // The family's look and footer, and the help address in effect, on every invite.
+    theme: siteTheme(site),
+    help: signInHelp(),
+    // Request sites: the "Pending requests" tab (decline is silent; notifyOnDecline: true sends a note).
+    ...(requests && { accessRequests: requests }),
     siteName: site.name,
     signInUrl: `${publicOrigin()}/sign-in`,
     inviteDomains: site.inviteDomains,

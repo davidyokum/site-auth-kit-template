@@ -1,7 +1,7 @@
 import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
 import type { AuditEvent } from 'auth-kit/admin';
 import { mockClient } from 'aws-sdk-client-mock';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { alertOnPeopleChange, describeChange, isGrantOrRemoval } from '@/lib/alerts';
 
 // A named alert recipient and a help address, on a personal site with a known name and sender, so
@@ -14,7 +14,6 @@ vi.mock('@/site.config', async (importOriginal) => {
       ...actual.site,
       name: 'Example Site',
       family: 'personal',
-      familyUnit: null,
       alertEmails: ['security@example.com'],
       email: { fromAddress: 'noreply@example.com', replyTo: 'help@example.com' },
     },
@@ -67,14 +66,20 @@ describe('grants and removals alert a named person (lib/alerts.ts)', () => {
   });
 });
 
-describe('sending the alert (lib/alerts.ts → SES)', () => {
+describe('sending the alert (lib/alerts.ts → the site’s mailer → SES)', () => {
   beforeEach(() => {
     ses.reset();
     ses.on(SendEmailCommand).resolves({ MessageId: 'test-message' });
     vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // No settings table in the CI outputs: the help address in effect is the configured one (and says why).
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    // A deployed site's origin (lib/origin.ts): links are built from configuration, never guessed.
+    vi.stubEnv('APP_ORIGIN', 'https://www.example.com');
   });
 
-  it('emails the named people from the family’s sender, with the help mailbox as Reply-To and the family footer', async () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('emails the named people from the family’s sender, with the help address as Reply-To and the card’s layout and footer', async () => {
     await alertOnPeopleChange(event({ action: 'people.disable' }));
     const calls = ses.commandCalls(SendEmailCommand);
     expect(calls).toHaveLength(1);
@@ -83,7 +88,9 @@ describe('sending the alert (lib/alerts.ts → SES)', () => {
     expect(input.ReplyToAddresses).toEqual(['help@example.com']);
     expect(input.Destination?.ToAddresses).toEqual(['security@example.com']);
     expect(input.Content?.Simple?.Subject?.Data).toContain('disable');
-    expect(input.Content?.Simple?.Body?.Text?.Data).toMatch(/Activity page[\s\S]*\n\nMade by Yokum Lab\. Help: help@example\.com\.$/);
+    // A personal site: no identity line, just the help line (emails match the card; auth-kit ADR 0024).
+    expect(input.Content?.Simple?.Body?.Text?.Data).toMatch(/Activity page[\s\S]*\n\nHelp: help@example\.com\.$/);
+    expect(input.Content?.Simple?.Body?.Html?.Data).toContain('Help: help@example.com.');
   });
 
   it('sends nothing for a change that grants or removes nothing', async () => {

@@ -18,13 +18,14 @@ Nothing in this folder reaches a deployed build. Three mechanisms keep it out, a
 
 ## The matrix server mode
 
-The auth matrix (test/matrix) runs every route as every persona against the real app under `next dev`, in CI, where there's no AWS. `startMatrixServer` (test/matrix/global-setup.ts) starts that server with `AUTH_KIT_MATRIX=1` and a fixture describing each persona. Then `matrixOverrides()` hands the app what to swap in, and the app uses it in four places:
+The auth matrix (test/matrix) runs every route as every persona against the real app under `next dev`, in CI, where there's no AWS. `startMatrixServer` (test/matrix/global-setup.ts) starts that server with `AUTH_KIT_MATRIX=1` and a fixture describing each persona. Then `matrixOverrides()` hands the app what to swap in, and the app uses it in these places:
 
 - `lib/auth.ts`: `serverAuth`, so tokens verify against the test issuer's public keys (nothing is fetched from the pool) and a scripted Cognito answers the authenticator check and live re-reads, refusing a disabled account and a revoked session the way Cognito does.
 - `lib/admin.ts`: `peopleCognito` (reads the fixture, refuses every change) and `mailer` (sends nothing).
 - `lib/audit-log.ts`: `auditLog`, in memory.
 - `lib/projects/index.ts`: `shared('projects', createMemoryProjectStore)`, the app's own in-memory store, one per server process, so a project the API creates shows on the page.
 - `lib/resources.ts`: `matrix.resources`, auth-kit's in-memory membership store (who has which role on which project), shared by every bundle.
+- `lib/accounts.ts`: auth-kit's in-memory site settings, rate-limit, and request stores (`shared(...)`), the read-only Cognito, and a mailer that sends nothing; under the matrix only, rate limits high enough for every persona to send each row twice (the real limits are auth-kit's to test).
 
 Everything else is the production code path: the same proxy, guards, capability map, and pages. auth-kit returns `null` unless `NODE_ENV` is `development` and the flag is set, and throws (never falls back to AWS) if the flag comes without a fixture. Its proxy honors the matrix's "without proxy" pass only outside production builds, only with that flag, and only on a loopback URL. Details: auth-kit's README ("Auth-matrix tests") and ADR 0016.
 

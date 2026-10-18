@@ -18,6 +18,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
         <Link href="/admin">Overview</Link>
         <Link href="/admin/people">People</Link>
         {user.capabilities.has('audit.read') && <Link href="/admin/activity">Activity</Link>}
+        {user.capabilities.has('settings.security') && <Link href="/admin/settings">Settings</Link>}
       </nav>
       {children}
     </div>

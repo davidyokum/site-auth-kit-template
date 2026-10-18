@@ -28,6 +28,11 @@ export interface CspInput {
   dev: boolean;
   /** The pool's region: the browser calls Cognito directly. */
   region: string;
+  /**
+   * AWS WAF's JavaScript integration (site.config.ts `siteWaf.integrationUrl`), on sites with a site
+   * web ACL: the script (loaded with the nonce) fetches its challenge token from its own host.
+   */
+  wafIntegrationUrl?: string | null;
 }
 
 function serialize(directives: Record<string, readonly string[]>): string {
@@ -37,9 +42,15 @@ function serialize(directives: Record<string, readonly string[]>): string {
 }
 
 /** The full per-request policy. */
-export function contentSecurityPolicy({ nonce, dev, region }: CspInput): string {
+export function contentSecurityPolicy({ nonce, dev, region, wafIntegrationUrl }: CspInput): string {
   if (!/^[A-Za-z0-9+/]{16,}={0,2}$/.test(nonce)) throw new Error('CSP nonce must be base64 with at least 96 bits.');
   if (!/^[a-z]{2}(?:-[a-z]+)+-\d$/.test(region)) throw new Error(`CSP region "${region}" isn't an AWS Region.`);
+  let waf: string[] = [];
+  if (wafIntegrationUrl) {
+    const url = new URL(wafIntegrationUrl);
+    if (url.protocol !== 'https:' || !/\.sdk\.awswaf\.com$/.test(url.hostname)) throw new Error(`CSP: "${wafIntegrationUrl}" isn't AWS WAF's JavaScript integration.`);
+    waf = [url.origin];
+  }
   return serialize({
     'default-src': ["'self'"],
     'script-src': ["'self'", `'nonce-${nonce}'`, "'strict-dynamic'", ...(dev ? ["'unsafe-eval'"] : [])],
@@ -51,7 +62,8 @@ export function contentSecurityPolicy({ nonce, dev, region }: CspInput): string 
     'font-src': ["'self'"],
     // Amplify's sign-in calls go from the browser to Cognito (user pools, and identity pools for
     // AWS credentials); auth-kit checks new passwords against Have I Been Pwned (k-anonymity range API).
-    'connect-src': ["'self'", `https://cognito-idp.${region}.amazonaws.com`, `https://cognito-identity.${region}.amazonaws.com`, 'https://api.pwnedpasswords.com'],
+    // On sites with a site web ACL, AWS WAF's integration fetches its challenge token from its own host.
+    'connect-src': ["'self'", `https://cognito-idp.${region}.amazonaws.com`, `https://cognito-identity.${region}.amazonaws.com`, 'https://api.pwnedpasswords.com', ...waf],
     'object-src': ["'none'"],
     'base-uri': ["'none'"],
     'form-action': ["'self'"],

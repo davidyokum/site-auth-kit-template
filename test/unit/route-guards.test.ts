@@ -8,7 +8,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { DEV_ALIAS, DEV_MATRIX_ALIAS } from 'auth-kit/dev';
 import { describe, expect, it } from 'vitest';
-import { PUBLIC_PAGES, PUBLIC_ROUTES } from '@/lib/public-routes';
+import { PUBLIC_ACCOUNT_ROUTES, PUBLIC_PAGES, PUBLIC_ROUTES } from '@/lib/public-routes';
 
 const ROOT = join(import.meta.dirname, '..', '..');
 
@@ -37,18 +37,30 @@ const exportedNames = (file: string) => {
 };
 
 /**
- * A server-side check from lib/auth.ts, or auth-kit's People or resource actions (which check live
- * themselves: the acting person, then their access to the item).
+ * A server-side check from lib/auth.ts, or auth-kit's actions that check the person live themselves:
+ * the People and resource actions (the acting person, then their access to the item), a member's own
+ * account actions (lib/accounts.ts `selfService`), and Settings (`signInHelpActions`).
  */
-const GUARD = /\b(?:pages|auth)\.require(?:User|Can|Group|ResourceRole)\(|\b(?:peopleActions|resourceActions)\(\)\.forms\.\w+\(/;
+const GUARD = /\b(?:pages|auth)\.require(?:User|Can|Group|ResourceRole)\(|\b(?:peopleActions|resourceActions|signInHelpActions)\(\)\.forms\.\w+\(|\bselfService\(\)\.(?:requestEmailChange|confirmEmailChange|deleteMyAccount)\(/;
+
+/**
+ * Page and route files, including the account-creation ones that exist only in their mode
+ * (`page.signup.tsx`, `route.request.ts`; next.config.ts, lib/account-modes.ts).
+ */
+const PAGE_FILE = /\/page(?:\.(?:signup|request))?\.tsx$/;
+const ROUTE_FILE = /\/route(?:\.(?:signup|request))?\.ts$/;
 
 /** The URL path a page file serves, e.g. app/app/projects/[id]/page.tsx → /app/projects/[id]. */
-const urlOf = (file: string) => `/${file.replace(/^app\//, '').replace(/\/?page\.tsx$/, '')}`.replace(/\/$/, '') || '/';
+const urlOf = (file: string) => `/${file.replace(/^app\//, '').replace(/\/?page(?:\.(?:signup|request))?\.tsx$/, '')}`.replace(/\/$/, '') || '/';
+/** The URL path a route file serves. */
+const routeUrlOf = (file: string) => `/${file.replace(/^app\//, '').replace(/\/route(?:\.(?:signup|request))?\.ts$/, '')}`;
+/** The account-creation routes: public by design, they answer every address alike (auth-kit ADR 0023). */
+const isAccountRoute = (file: string) => /\/route\.(?:signup|request)\.ts$/.test(file);
 
 describe('every page, layout, route, and action checks on the server', () => {
-  const pages = appFiles.filter((f) => /\/page\.tsx$/.test(f));
+  const pages = appFiles.filter((f) => PAGE_FILE.test(f));
   const layouts = appFiles.filter((f) => /\/layout\.tsx$/.test(f) && f !== 'app/layout.tsx');
-  const routes = appFiles.filter((f) => /\/route\.ts$/.test(f));
+  const routes = appFiles.filter((f) => ROUTE_FILE.test(f));
   const actions = appFiles.filter((f) => source(f).trimStart().startsWith("'use server'"));
 
   it('finds the files it checks', () => {
@@ -57,9 +69,9 @@ describe('every page, layout, route, and action checks on the server', () => {
     expect(actions.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('pages call a guard, except the listed public ones', () => {
+  it('pages call a guard, except the public ones (the account-creation pages are public wherever they exist)', () => {
     for (const page of pages) {
-      if ((PUBLIC_PAGES as readonly string[]).includes(urlOf(page))) continue;
+      if ((PUBLIC_PAGES as readonly string[]).includes(urlOf(page)) || /\/page\.(?:signup|request)\.tsx$/.test(page)) continue;
       expect(source(page), `${page} has no requireUser/requireCan/requireGroup`).toMatch(GUARD);
     }
   });
@@ -74,11 +86,25 @@ describe('every page, layout, route, and action checks on the server', () => {
     for (const layout of layouts) expect(source(layout), `${layout} has no guard`).toMatch(GUARD);
   });
 
-  it('every exported handler in every route file calls a guard', () => {
+  it('every exported handler in every route file calls a guard (the account-creation routes hand the request to auth-kit’s routes instead)', () => {
     for (const route of routes) {
       const handlers = source(route).split(/export const (?=GET|POST|PUT|PATCH|DELETE)/).slice(1);
       expect(handlers.length, `${route} exports no handlers`).toBeGreaterThan(0);
-      for (const handler of handlers) expect(handler, `${route}: ${handler.slice(0, 6)} has no guard`).toMatch(GUARD);
+      for (const handler of handlers) {
+        if (isAccountRoute(route)) expect(handler, `${route} must answer through accountRoutes()`).toMatch(/accountRoutes\(\)\.(?:signUp|requestAccess)\(request\)/);
+        else expect(handler, `${route}: ${handler.slice(0, 6)} has no guard`).toMatch(GUARD);
+      }
+    }
+  });
+
+  it('the account-creation pages and routes exist only behind their mode’s extension, and are public exactly where they exist', () => {
+    const accountFiles = appFiles.filter((f) => /^app\/(?:sign-up|request-access|api\/auth)\//.test(f));
+    expect(accountFiles.sort()).toEqual(['app/api/auth/request-access/route.request.ts', 'app/api/auth/sign-up/route.signup.ts', 'app/request-access/page.request.tsx', 'app/sign-up/page.signup.tsx']);
+    for (const route of PUBLIC_ACCOUNT_ROUTES) expect(PUBLIC_ROUTES).toContain(route);
+    for (const file of accountFiles.filter(isAccountRoute)) {
+      const url = routeUrlOf(file);
+      // Public only on sites whose mode has the route (it isn't a route anywhere else).
+      expect(PUBLIC_ROUTES.includes(url)).toBe(PUBLIC_ACCOUNT_ROUTES.includes(url));
     }
   });
 

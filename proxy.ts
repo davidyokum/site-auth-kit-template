@@ -20,6 +20,7 @@ import { auth } from '@/lib/auth';
 import { outputs } from '@/lib/outputs';
 import { PUBLIC_ROUTES } from '@/lib/public-routes';
 import { contentSecurityPolicy } from '@/lib/security-headers';
+import { site } from '@/site.config';
 
 const dev = process.env.NODE_ENV === 'development';
 
@@ -27,7 +28,7 @@ export const proxy = withAuthProxy({
   auth,
   publicRoutes: PUBLIC_ROUTES,
   refresh: amplifyAdapterRefresh({ runWithAmplifyServerContext, fetchAuthSession }),
-  headers: nonceCspHeaders((nonce) => contentSecurityPolicy({ nonce, dev, region: outputs.auth.aws_region })),
+  headers: nonceCspHeaders((nonce) => contentSecurityPolicy({ nonce, dev, region: outputs.auth.aws_region, wafIntegrationUrl: site.siteWaf?.integrationUrl ?? null })),
 });
 
 // Must be a literal: Next reads the matcher at build time.

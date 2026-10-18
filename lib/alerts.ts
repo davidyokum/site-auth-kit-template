@@ -1,20 +1,21 @@
 /**
  * Grants and removals alert a named person (03 §2 Admin area). auth-kit's People actions call
  * `onChange` with each completed change's audit row; this decides which ones matter and emails
- * `site.alertEmails` through SES from the site's sender, with the help mailbox as Reply-To and the
- * family footer (lib/email.ts). Every alert is also logged, so it reaches the server logs even
- * before anyone is named.
+ * `site.alertEmails` through the site's mailer: the family's sender, the help address in effect as
+ * Reply-To, and the card's layout and footer (lib/email.ts). Every alert is also logged, so it
+ * reaches the server logs even before anyone is named.
  *
  * Super admin grants and ownership transfers get a second, separate alert from auth-kit itself (the
  * owner is emailed, or both owners for a transfer, and the change is undone if that email can't be
  * sent); that one isn't optional.
  */
 import 'server-only';
-import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
 import { type AuditEvent, isStandardGroup } from 'auth-kit/admin';
 import { site } from '@/site.config';
-import { replyToAddresses, senderMailbox, withFooterText } from './email';
-import { outputs } from './outputs';
+import { accountMailer, signInHelp } from './accounts';
+import { inCardLayout } from './email';
+import { publicOrigin } from './origin';
+import { siteTheme } from './theme';
 
 /** The people changes a named person hears about: anything that grants or removes access. */
 export function isGrantOrRemoval(event: Pick<AuditEvent, 'action' | 'after' | 'outcome'>): boolean {
@@ -56,22 +57,13 @@ export function describeChange(event: AuditEvent): { subject: string; text: stri
   return { subject: `${site.name}: ${verb} by ${who}`, text: lines.join('\n') };
 }
 
-let ses: SESv2Client | undefined;
-
 /** auth-kit's `onChange` hook. Failures are reported to auth-kit's `onError`, never to the admin. */
 export async function alertOnPeopleChange(event: AuditEvent): Promise<void> {
   if (!isGrantOrRemoval(event)) return;
   const { subject, text } = describeChange(event);
   console.warn(JSON.stringify({ alert: 'people-change', action: event.action, auditId: event.id, actor: event.actor.sub, target: event.target?.sub }));
   if (site.alertEmails.length === 0) return;
-  ses ??= new SESv2Client({ region: outputs.auth.aws_region });
-  const replyTo = replyToAddresses();
-  await ses.send(
-    new SendEmailCommand({
-      FromEmailAddress: senderMailbox(),
-      Destination: { ToAddresses: [...site.alertEmails] },
-      ...(replyTo.length > 0 && { ReplyToAddresses: replyTo }),
-      Content: { Simple: { Subject: { Data: subject, Charset: 'UTF-8' }, Body: { Text: { Data: withFooterText(text), Charset: 'UTF-8' } } } },
-    }),
-  );
+  const help = (await signInHelp().effective()).address;
+  const email = inCardLayout({ subject, text }, { siteName: site.name, theme: siteTheme(site), signInUrl: `${publicOrigin()}/sign-in`, helpEmail: help });
+  await accountMailer().sendEmail({ to: [...site.alertEmails], email, replyTo: [help] });
 }

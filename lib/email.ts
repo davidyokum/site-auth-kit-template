@@ -1,49 +1,62 @@
 /**
  * The email the site sends itself: invites and the owner's alerts (auth-kit's SES mailer, used by
  * lib/admin.ts), a project Manager's invite and the admins' alert about it (lib/resource-actions.ts),
- * and change alerts (lib/alerts.ts). All of it comes from the family's sender name
- * (site.families.ts), carries the help mailbox as Reply-To, and ends with the family footer.
+ * the account-creation and self-service notices (lib/accounts.ts), and change alerts (lib/alerts.ts).
  *
- * Cognito's own email (sign-in and verification codes) gets the same sender name and Reply-To from
- * the pool (amplify/auth/resource.ts), but not the footer: its text is Cognito's. Full control of
- * those messages needs Cognito's custom email sender trigger (later).
+ * Emails match the sign-in card (auth-kit ADR 0024; register E4a): no letterhead, the family's
+ * sender name ("{Site} (UNC)" on a work site, or the site's name on personal sites), the help address as
+ * Reply-To, and a footer that repeats the card's identity sentence, then "Help: {address}."
+ * (personal sites: the help line alone). auth-kit's invite and account emails are built that way;
+ * its plain alerts (Super admin granted, ownership moved, a Manager's invite, the unused owner
+ * invite, a changed help address) are re-laid in the same layout here, so every email the site
+ * sends looks like one family.
+ *
+ * The help address is the one in effect when each email goes out: the configured one, or a Super
+ * admin's override (`createSignInHelp`, lib/accounts.ts). Cognito's code emails come from the custom
+ * message trigger in the same layout (amplify/auth/custom-message).
  */
 import 'server-only';
-import type { SESv2Client } from '@aws-sdk/client-sesv2';
+import { SESv2Client } from '@aws-sdk/client-sesv2';
 import {
   createSesInviteMailer,
+  type EmailBlock,
+  type EmailSender,
+  type EmailSite,
   type InviteMailer,
   type OwnerAlertNotifier,
   type OwnerInviteWarningNotifier,
   type RenderedEmail,
   type ResourceInviteNotifier,
+  renderEmail,
   renderInviteEmail,
   renderOwnerInviteWarningEmail,
   renderOwnershipTransferEmail,
   renderResourceInviteAlertEmail,
+  renderSignInHelpChangedEmail,
   renderSuperadminGrantEmail,
 } from 'auth-kit/admin';
+import { helpAddressOf, type SignInHelpSource } from 'auth-kit/accounts';
+import { type AuthTheme, senderDisplayName } from 'auth-kit/themes';
 import { site as configuredSite } from '@/site.config';
-import { emailFooter, type FamilySite, senderDisplayName } from '@/site.families';
+import type { FamilySite } from '@/site.families';
+import { siteTheme } from './theme';
 
 /** What these helpers read from site.config.ts (tests pass their own). */
-export interface EmailSite extends FamilySite {
+export interface MailSite extends FamilySite {
+  readonly emailHint?: string | null;
   readonly email: { readonly fromAddress: string; readonly replyTo?: string | null };
 }
-
-const HTML_ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
-const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (c) => HTML_ESCAPES[c] ?? c);
 
 /** Letters, digits, spaces, and the other characters RFC 5322 allows unquoted in a display name. */
 const PLAIN_DISPLAY_NAME = /^[A-Za-z0-9!#$%&'*+\-/=?^_`{|}~ ]+$/;
 
 /**
- * The From header for SES: `Name <address>`. The name is quoted when it has characters RFC 5322
- * treats specially (the parentheses in "Example Site (UNC)" would otherwise read as a comment),
- * and MIME-encoded when it isn't ASCII, as SES requires.
+ * The From header for SES: `Name <address>`. The name is the family's sender name, quoted when it has
+ * characters RFC 5322 treats specially (the parentheses in "Example Site (UNC)" would otherwise read
+ * as a comment), and MIME-encoded when it isn't ASCII, as SES requires.
  */
-export function senderMailbox(site: EmailSite = configuredSite): string {
-  const name = senderDisplayName(site);
+export function senderMailbox(site: MailSite = configuredSite): string {
+  const name = senderDisplayName(site.name, site.family);
   const address = site.email.fromAddress.trim();
   if (/[\r\n]/.test(name)) throw new Error('site.config.ts: the site name may not contain line breaks.');
   if (!/^[^\s<>"@]+@[^\s<>"@]+\.[^\s<>"@]+$/.test(address)) throw new Error(`site.config.ts: email.fromAddress "${address}" isn't an address.`);
@@ -60,42 +73,76 @@ export function senderMailbox(site: EmailSite = configuredSite): string {
   return `${display} <${address}>`;
 }
 
-/** Reply-To for every email the site sends: the help mailbox, or none. */
-export function replyToAddresses(site: EmailSite = configuredSite): string[] {
-  const help = site.email.replyTo?.trim();
-  return help ? [help] : [];
+/**
+ * A plain email (subject, and text whose paragraphs are its lines) in the card's layout: the site's
+ * name as a text wordmark, the paragraphs, and the footer ("{identity line}. Help: {address}.").
+ */
+export function inCardLayout(email: Pick<RenderedEmail, 'subject' | 'text' | 'preheader' | 'replyTo'>, site: EmailSite): RenderedEmail {
+  const paragraphs = email.text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const blocks: EmailBlock[] = paragraphs.map((line) => ({ kind: 'paragraph', parts: [line] }));
+  return renderEmail({
+    site,
+    subject: email.subject,
+    preheader: email.preheader ?? paragraphs[0] ?? email.subject,
+    blocks,
+    ...(email.replyTo !== undefined && { replyTo: email.replyTo }),
+  });
 }
 
-/** A plain-text body with the family footer after a blank line. */
-export function withFooterText(text: string, site: EmailSite = configuredSite): string {
-  return `${text}\n\n${emailFooter(site)}`;
+export interface SiteMailerOptions {
+  region: string;
+  client?: SESv2Client;
+  /** The help address in effect: an address, or `createSignInHelp` (lib/accounts.ts). */
+  help: SignInHelpSource;
+  /** Absolute sign-in URL: its host is the "only enter codes at" domain in the layout. */
+  signInUrl: string;
 }
 
-/** An email with the family footer: appended to the text, and HTML-escaped to the HTML. */
-export function withFooter(email: RenderedEmail, site: EmailSite = configuredSite): RenderedEmail {
-  return { ...email, text: withFooterText(email.text, site), html: `${email.html}\n<p>${escapeHtml(emailFooter(site))}</p>` };
-}
+export type SiteMailer = InviteMailer & Required<OwnerAlertNotifier> & OwnerInviteWarningNotifier & ResourceInviteNotifier & EmailSender;
 
 /**
- * Invites, the owner's alerts (someone was made Super admin; ownership moved), the warning the
- * invite-expiry sweep sends about the owner's unused invite, and the admins' alert when a project's
- * Manager invites someone new: auth-kit's SES mailer and its templates, with this site's sender,
- * Reply-To, and footer.
+ * Invites (the People page's, an approved request's, and a project Manager's), the owner's alerts, the
+ * warning about the owner's unused invite, the admins' alert about a Manager's invite, a changed help
+ * address, and any already-rendered email (`sendEmail`: account-creation and self-service notices):
+ * auth-kit's SES mailer, from this site's sender, with the help address in effect as Reply-To (an
+ * invite replies to whoever sent it) and the card's footer.
  */
-export function createSiteMailer(
-  options: { region: string; client?: SESv2Client },
-  site: EmailSite = configuredSite,
-): InviteMailer & OwnerAlertNotifier & OwnerInviteWarningNotifier & ResourceInviteNotifier {
-  const replyTo = replyToAddresses(site);
-  return createSesInviteMailer({
-    from: senderMailbox(site),
-    region: options.region,
-    ...(options.client && { client: options.client }),
-    ...(replyTo.length > 0 && { replyTo }),
-    render: (input) => withFooter(renderInviteEmail(input), site),
-    renderSuperadminGrant: (alert) => withFooter(renderSuperadminGrantEmail(alert), site),
-    renderOwnershipTransfer: (alert) => withFooter(renderOwnershipTransferEmail(alert), site),
-    renderOwnerInviteWarning: (warning) => withFooter(renderOwnerInviteWarningEmail(warning), site),
-    renderResourceInvite: (alert) => withFooter(renderResourceInviteAlertEmail(alert), site),
-  });
+export function createSiteMailer(options: SiteMailerOptions, site: MailSite = configuredSite): SiteMailer {
+  const theme: AuthTheme = siteTheme(site);
+  const from = senderMailbox(site);
+  // One SES client for every message; a mailer per message, so each has the help address in effect.
+  let client = options.client;
+  const mailer = async () => {
+    const helpEmail = await helpAddressOf(options.help);
+    const layout: EmailSite = { siteName: site.name, theme, signInUrl: options.signInUrl, helpEmail };
+    const card =
+      <T,>(render: (input: T) => RenderedEmail) =>
+      (input: T) =>
+        inCardLayout(render(input), layout);
+    client ??= new SESv2Client({ region: options.region });
+    return createSesInviteMailer({
+      from,
+      client,
+      replyTo: [helpEmail],
+      // People actions pass the theme and help address; a Manager's invite (auth-kit/resources) doesn't.
+      render: (input) => renderInviteEmail({ ...input, theme: input.theme ?? theme, helpEmail: input.helpEmail ?? helpEmail }),
+      renderSuperadminGrant: card(renderSuperadminGrantEmail),
+      renderOwnershipTransfer: card(renderOwnershipTransferEmail),
+      renderOwnerInviteWarning: card(renderOwnerInviteWarningEmail),
+      renderResourceInvite: card(renderResourceInviteAlertEmail),
+      renderSignInHelpChanged: card(renderSignInHelpChangedEmail),
+    });
+  };
+  return {
+    sendInvite: async (input) => (await mailer()).sendInvite(input),
+    superadminGranted: async (alert) => (await mailer()).superadminGranted(alert),
+    ownershipTransferred: async (alert) => (await mailer()).ownershipTransferred(alert),
+    signInHelpChanged: async (alert) => (await mailer()).signInHelpChanged(alert),
+    ownerInviteUnused: async (warning) => (await mailer()).ownerInviteUnused(warning),
+    resourceInviteSent: async (alert) => (await mailer()).resourceInviteSent(alert),
+    sendEmail: async (message) => (await mailer()).sendEmail(message),
+  };
 }

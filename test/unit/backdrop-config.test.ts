@@ -10,9 +10,14 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createBackdropRoute } from '@/lib/dev/backdrop-route';
 import { describeChange, formatBackdrop, lockChoiceFor, replaceBackdrop, validateChoice, writeBackdropChoice } from '@/scripts/lib/backdrop-config.mjs';
 import { loadSiteConfig } from '@/scripts/lib/site-config.mjs';
+import { site as configured } from '@/site.config';
 
 const ROOT = join(import.meta.dirname, '..', '..');
-const REAL = readFileSync(join(ROOT, 'site.config.ts'), 'utf8');
+/**
+ * This site's own site.config.ts with its backdrop line as the template ships it (nothing chosen
+ * yet), so these hold on the template and on every site made from it, chosen backdrop or not.
+ */
+const REAL = readFileSync(join(ROOT, 'site.config.ts'), 'utf8').replace(/^ {2}backdrop: .*$/m, '  backdrop: null as SiteBackdrop | null,');
 const CHOICE = { style: 'contours', seed: 'k3f9x2ab', styleVersion: 1 };
 
 describe('validateChoice and formatBackdrop', () => {
@@ -105,8 +110,8 @@ describe('lockChoiceFor (npm run backdrop:lock)', () => {
 describe('loadSiteConfig', () => {
   it('reads the real site.config.ts from a plain script', async () => {
     const { site } = await loadSiteConfig(ROOT);
-    expect(site.name).toBe('Example Site');
-    expect(site).toHaveProperty('backdrop');
+    expect(site.name).toBe(configured.name);
+    expect(site.backdrop).toEqual(configured.backdrop);
   });
 });
 
@@ -160,5 +165,13 @@ describe('the picker’s write route (lib/dev/backdrop-route.ts)', () => {
     expect(bad.status).toBe(400);
     expect(((await bad.json()) as { error: string }).error).toMatch(/seed/);
     unchanged();
+  });
+});
+
+describe('the backdrop commands the README and the build’s lock message name', () => {
+  it('are npm scripts', () => {
+    const pkg = JSON.parse(readFileSync(join(import.meta.dirname, '..', '..', 'package.json'), 'utf8')) as { scripts: Record<string, string> };
+    expect(pkg.scripts['backdrop:pick']).toBe('node scripts/backdrop-pick.mjs');
+    expect(pkg.scripts['backdrop:lock']).toBe('node scripts/backdrop-lock.mjs');
   });
 });

@@ -12,7 +12,11 @@ import { matrixServerOverrides } from 'auth-kit/testing/matrix-server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as off from '@/lib/dev/matrix.off';
 import * as on from '@/lib/dev/matrix.on';
-import { MATRIX_PERSONAS, matrixPersonaSpecs } from '../matrix/personas';
+import type { MatrixPersonaSpec } from 'auth-kit/testing';
+import { MATRIX_PERSONAS, type MatrixPersonaKey, SIGN_UP_SITE, matrixPersonaSpecs } from '../matrix/personas';
+
+/** This site's personas (every key present is a full spec). */
+const specs = () => matrixPersonaSpecs() as Record<MatrixPersonaKey, MatrixPersonaSpec>;
 
 const issuer = () => createTestIssuer({ userPoolId: 'us-east-1_PlaceholderPool', clientId: 'placeholderappclient00000' });
 
@@ -45,17 +49,17 @@ describe('@/dev-matrix', () => {
     expect(() => on.matrixOverrides()).toThrow(new RegExp(`needs ${MATRIX_FIXTURE_ENV}`));
   });
 
-  it('describes all 12 personas (anonymous plus these eleven) in a fixture auth-kit accepts', () => {
-    const { fixture, personas } = matrixFixture({ issuer: issuer(), personas: matrixPersonaSpecs() });
+  it('describes every persona (anonymous plus these fourteen, and newMember on sign-up sites) in a fixture auth-kit accepts', () => {
+    const { fixture, personas } = matrixFixture({ issuer: issuer(), personas: specs() });
     expect(Object.keys(personas).sort()).toEqual(Object.keys(MATRIX_PERSONAS).sort());
-    expect(Object.keys(personas).length + 1).toBe(12);
+    expect(Object.keys(personas).length + 1).toBe(SIGN_UP_SITE ? 16 : 15);
     // The parser refuses unknown fields, so `why` (documentation) never reaches the fixture.
     expect(parseMatrixFixture(JSON.stringify(fixture))).toEqual(fixture);
     for (const user of fixture.users) expect(user).not.toHaveProperty('why');
   });
 
   it('answers like Cognito for the lifecycle personas, changes no accounts, and sends no email', async () => {
-    const { fixture, personas } = matrixFixture({ issuer: issuer(), personas: matrixPersonaSpecs() });
+    const { fixture, personas } = matrixFixture({ issuer: issuer(), personas: specs() });
     vi.stubEnv('NODE_ENV', 'development');
     vi.stubEnv(MATRIX_ENV_FLAG, '1');
     vi.stubEnv(MATRIX_FIXTURE_ENV, JSON.stringify(fixture));
@@ -66,6 +70,8 @@ describe('@/dev-matrix', () => {
 
     await expect(factors('member')).resolves.toEqual({ configured: ['PASSWORD'], mfa: ['SOFTWARE_TOKEN_MFA'] });
     await expect(factors('noAuthenticator')).resolves.toEqual({ configured: ['PASSWORD'], mfa: [] });
+    // Only emailed codes so far: the server sends it to the chooser page (first credential required).
+    await expect(factors('codeOnlyMember')).resolves.toEqual({ configured: ['EMAIL_OTP'], mfa: [] });
     await expect(factors('disabledAdmin')).rejects.toMatchObject({ code: 'account_disabled' });
     await expect(factors('revokedSession')).rejects.toMatchObject({ code: 'invalid_token' });
     await expect(gateway.getLiveUserState(personas.demotedAdmin.username)).resolves.toMatchObject({ enabled: true, groups: [] });

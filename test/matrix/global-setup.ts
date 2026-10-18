@@ -14,7 +14,7 @@
  */
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { startMatrixServer } from 'auth-kit/testing';
+import { type MatrixPersonaSpec, startMatrixServer } from 'auth-kit/testing';
 import type { TestProject } from 'vitest/node';
 import { type MatrixContext, type MatrixPersonaKey, matrixPersonaSpecs } from './personas';
 
@@ -31,7 +31,8 @@ export default async function setup(project: TestProject): Promise<() => Promise
   const server = await startMatrixServer<MatrixPersonaKey>({
     cwd: ROOT,
     port: PORT,
-    personas: matrixPersonaSpecs(),
+    // This site's personas (newMember only on sign-up sites): every key present is a full spec.
+    personas: matrixPersonaSpecs() as Record<MatrixPersonaKey, MatrixPersonaSpec>,
     env: {
       // A separate output folder, so a `npm run dev` you have open keeps its own (see next.config.ts).
       SITE_NEXT_DIST_DIR: '.next-matrix',
