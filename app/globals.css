@@ -280,3 +280,64 @@ select {
   display: grid;
   gap: 12px;
 }
+/* The role picker: each role with its can and can't, unavailable ones dimmed with the reason. */
+.ak-role-picker {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  margin: 0;
+}
+.ak-role-picker legend {
+  font-weight: 600;
+  padding: 0 4px;
+}
+.ak-role-options {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.ak-role-option label {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 8px;
+  row-gap: 2px;
+  cursor: pointer;
+}
+.ak-role-option input {
+  grid-row: 1 / span 4;
+  align-self: start;
+  margin-top: 0.3em;
+}
+.ak-role-label {
+  font-weight: 600;
+}
+.ak-role-can,
+.ak-role-cannot {
+  color: var(--muted);
+}
+.ak-role-unavailable label {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+.ak-role-reason {
+  font-style: italic;
+}
+.ak-role-matrix {
+  font-size: 0.9em;
+}
+.ak-role-matrix caption {
+  text-align: left;
+  color: var(--muted);
+  padding-bottom: 4px;
+}
+.ak-compare-roles > summary,
+.ak-lost-passkey > summary {
+  cursor: pointer;
+}
+.ak-compare-roles[open] {
+  overflow-x: auto;
+}
