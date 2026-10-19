@@ -233,6 +233,31 @@ describe('the invite-expiry sweep (auth-kit ADR 0019)', () => {
     );
   });
 
+  it('EventBridge Scheduler can assume its role (auth-kit 0.1.8-alpha.1), and the schedule waits for the role and its policy', () => {
+    // v0.1.8-alpha scoped aws:SourceArn to arn:...:schedule/<group>/*; Scheduler presents the schedule
+    // group's ARN, so CreateSchedule refused the role and the 2026-10-18 deploy rolled back.
+    const app = new App();
+    const stack = new Stack(app, 'Site', { env: { account: '111122223333', region: 'us-east-1' } });
+    new InviteExpirySweep(stack, 'InviteExpiry', { userPool: new UserPool(stack, 'Pool'), auditLog: new AuditLogTable(stack, 'AuditLog') });
+    const resources = Template.fromStack(stack).toJSON().Resources as Record<string, { Type: string; Properties: Record<string, unknown>; DependsOn?: string[] }>;
+    const [, schedule] = Object.entries(resources).find(([, r]) => r.Type === 'AWS::Scheduler::Schedule')!;
+    const roleId = (schedule.Properties.Target as { RoleArn: { 'Fn::GetAtt': [string, string] } }).RoleArn['Fn::GetAtt'][0];
+    const groupId = (schedule.Properties.GroupName as { Ref: string }).Ref;
+    expect((resources[roleId]!.Properties.AssumeRolePolicyDocument as { Statement: unknown[] }).Statement).toEqual([
+      {
+        Effect: 'Allow',
+        Principal: { Service: 'scheduler.amazonaws.com' },
+        Action: 'sts:AssumeRole',
+        Condition: { StringEquals: { 'aws:SourceAccount': '111122223333', 'aws:SourceArn': { 'Fn::GetAtt': [groupId, 'Arn'] } } },
+      },
+    ]);
+    const policyIds = Object.entries(resources)
+      .filter(([, r]) => r.Type === 'AWS::IAM::Policy' && JSON.stringify(r.Properties.Roles) === JSON.stringify([{ Ref: roleId }]))
+      .map(([id]) => id);
+    expect(policyIds).toHaveLength(1);
+    expect(schedule.DependsOn).toEqual(expect.arrayContaining([groupId, roleId, ...policyIds]));
+  });
+
   it('warns the owner, as amplify/backend.ts configures it, from the site’s sign-in@ mailbox with the family’s footer, sending only from its domain', () => {
     const backend = readFileSync(join(ROOT, 'amplify', 'backend.ts'), 'utf8');
     expect(backend).toMatch(/const senderAddress = senderAddressFor\(site\);\s*const sender = siteSender\(site\.name, site\.family, senderAddress\);/);

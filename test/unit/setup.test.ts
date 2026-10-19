@@ -96,7 +96,7 @@ describe('writing site.config.ts (applyAnswers)', () => {
   const template = readFileSync(join(ROOT, 'site.config.ts'), 'utf8');
 
   it('rewrites only the setup lines of this site’s own file, and the result is a config the site accepts', async () => {
-    const original = (await load(template)).site as unknown as CheckedSite & { email: { fromAddress: string }; inviteDomains: readonly string[]; backdrop: unknown };
+    const original = (await load(template)).site as unknown as CheckedSite & { inviteDomains: readonly string[]; backdrop: unknown };
     const { answers } = checkAnswers({ ...good, mode: 'domains', domains: 'example.org', requestsAlso: true, privacyNoticeUrl: '/privacy' }, context);
     const written = applyAnswers(template, answers);
     const { site } = await load(written);
@@ -111,7 +111,8 @@ describe('writing site.config.ts (applyAnswers)', () => {
       alertEmails: ['owner@example.org'],
       // The template's placeholder invite domain becomes the owner's; a site's own stays.
       inviteDomains: original.inviteDomains.join() === 'example.com' ? ['example.org'] : original.inviteDomains,
-      email: { fromAddress: original.email.fromAddress, replyTo: null },
+      // The sender is a setup line too: the family's (sign-in@yokum.app) is written as null.
+      email: { fromAddress: answers.fromAddress, replyTo: null },
       backdrop: original.backdrop,
     });
     // The one thing left is the site web ACL a sign-up site needs (register D3): it has to exist in AWS
