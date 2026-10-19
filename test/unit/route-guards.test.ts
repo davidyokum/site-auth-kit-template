@@ -37,11 +37,14 @@ const exportedNames = (file: string) => {
 };
 
 /**
- * A server-side check from lib/auth.ts, or auth-kit's actions that check the person live themselves:
- * the People and resource actions (the acting person, then their access to the item), a member's own
- * account actions (lib/accounts.ts `selfService`), and Settings (`signInHelpActions`).
+ * A server-side check from lib/auth.ts, or auth-kit's actions and routes that check the person
+ * themselves with the site's own `auth`: the People and resource actions (the acting person, then their
+ * access to the item), a member's own account actions (lib/accounts.ts `selfService`), Settings
+ * (`signInHelpActions`), and the account-change notice route (`accountNotices`: `auth.requireUser`
+ * before anything else; register A10).
  */
-const GUARD = /\b(?:pages|auth)\.require(?:User|Can|Group|ResourceRole)\(|\b(?:peopleActions|resourceActions|signInHelpActions)\(\)\.forms\.\w+\(|\bselfService\(\)\.(?:requestEmailChange|confirmEmailChange|deleteMyAccount)\(/;
+const GUARD =
+  /\b(?:pages|auth)\.require(?:User|Can|Group|ResourceRole)\(|\b(?:peopleActions|resourceActions|signInHelpActions)\(\)\.forms\.\w+\(|\bselfService\(\)\.(?:requestEmailChange|confirmEmailChange|deleteMyAccount)\(|\baccountNotices\(\)\.POST\(request\)/;
 
 /**
  * Page and route files, including the account-creation ones that exist only in their mode

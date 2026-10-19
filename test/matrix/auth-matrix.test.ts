@@ -169,6 +169,15 @@ const ADMIN_PAGE: Expect = {
 const SETTINGS_PAGE: Expect = { ...ADMIN_PAGE, adminView: 404, adminContent: 404, admin: 404 };
 
 /**
+ * The account-change notice route (register A10; every site): any signed-in account may ask for a
+ * notice about its own account, including one that has just chosen its first credential (the chooser
+ * page asks right after) and a password user who hasn't set up the authenticator yet (My account asks
+ * before that step; auth-kit 0.1.9-alpha.2). Under the matrix the notice is accepted and dropped
+ * (lib/accounts.ts), so a 200 means "allowed to ask".
+ */
+const NOTICE_ROUTE: Expect = { ...SIGNED_IN_API, codeOnlyMember: 200, noAuthenticator: 200 };
+
+/**
  * The account-creation routes (public on purpose): the same answer for every address and every
  * persona, at least 800 ms later. Each row posts an address that already has an account, which gets
  * an email (none is sent under the matrix) instead of a different answer.
@@ -221,6 +230,8 @@ describe('auth matrix', () => {
       { method: 'GET', path: '/api/projects/:id/access', expect: PROJECT_API },
       // Re-giving the member the role they have: changes nothing, so every persona sees the same project.
       { method: 'PUT', path: '/api/projects/:id/access', headers: { origin: baseUrl }, body: { email: session('member').email, role: 'contributor' }, expect: GRANT_API },
+      // "Your password was changed" (a passkey notice would also check the account's passkeys with Cognito).
+      { method: 'POST', path: '/api/auth-kit/account-notice', headers: { origin: baseUrl }, body: { event: 'password-changed' }, expect: NOTICE_ROUTE },
       ...(takesSignUps(site.accountCreation)
         ? [
             { path: '/sign-up', expect: PUBLIC },
@@ -364,6 +375,14 @@ describe('what the matrix rows can’t express', () => {
       body: JSON.stringify({ name: 'Wrong origin' }),
     });
     expect(localhost.status).toBe(403);
+  });
+
+  it('the account-change notice route takes only same-origin JSON about a change it knows (register A10)', async () => {
+    const post = (init: RequestInit) => send('/api/auth-kit/account-notice', { as: 'otherMember', method: 'POST', ...init });
+    const elsewhere = await post({ headers: { origin: 'https://attacker.example', 'content-type': 'application/json' }, body: JSON.stringify({ event: 'password-changed' }) });
+    expect(elsewhere.status).toBe(403);
+    expect((await post({ headers: { origin: baseUrl, 'content-type': 'text/plain' }, body: 'event=password-changed' })).status).toBe(415);
+    expect((await post(json({ event: 'email-changed' }))).status).toBe(400);
   });
 
   it('input is validated on the server (415 for non-JSON, 400 for a bad name)', async () => {

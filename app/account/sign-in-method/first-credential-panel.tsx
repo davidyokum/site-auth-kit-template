@@ -3,8 +3,14 @@
  * Function props (`onDone`) can't cross from a server component, so this small client wrapper
  * renders auth-kit's `ChooseFirstCredential` and decides where to go afterwards. Inside the site's
  * card (`AuthCard`), on the backdrop.
+ *
+ * Like `SignIn`'s own chooser step, it asks for the account-change notice once the first passkey or
+ * password is saved ("A passkey was added to your account", "Your password was changed"; register A10),
+ * at auth-kit's `ACCOUNT_NOTICE_PATH` (app/api/auth-kit/account-notice). A notice that can't be sent
+ * never holds the person up. With `accountName`, auth-kit also sets its passkey hint when a passkey is
+ * made here, so this browser's next Continue opens the passkey prompt (register A5a).
  */
-import { AuthCard, ChooseFirstCredential } from 'auth-kit/client';
+import { ACCOUNT_NOTICE_PATH, AuthCard, ChooseFirstCredential, sendAccountNotice } from 'auth-kit/client';
 import { siteTheme } from '@/lib/theme';
 import { site } from '@/site.config';
 
@@ -15,9 +21,14 @@ export function FirstCredentialPanel({ issuer, passkeysEnabled, accountName }: {
         issuer={issuer}
         passkeysEnabled={passkeysEnabled}
         {...(accountName !== null && { accountName })}
-        // A full page load, not a client navigation: the server must re-read the account's new way in.
-        // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-        onDone={() => window.location.assign('/app')}
+        onDone={(how) => {
+          // The notice never throws and gives up after 5 seconds. Then a full page load, not a client
+          // navigation: the server must re-read the account's new way in.
+          void sendAccountNotice({ url: ACCOUNT_NOTICE_PATH }, how === 'password' ? 'password-changed' : 'passkey-added').then(() =>
+            // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+            window.location.assign('/app'),
+          );
+        }}
       />
     </AuthCard>
   );

@@ -12,9 +12,12 @@ Fill in when the site is created (03 §2 Assurance: tier, pool, and account are 
 
 - **Tier:** 2 (named people). See `site.config.ts`.
 - **Account creation:** `site.config.ts` `accountCreation` (the template: invite only).
-- **Help address:** `site.config.ts` `email.replyTo` (null: the family's mailbox in `site.families.ts`).
-- **AWS account, profile, and Amplify app ID:** `deploy.config.json` (every AWS-touching script checks it
-  first; the hygiene test allows its `awsAccountId` and `amplifyAppId` and no other IDs).
+- **Sender and help address:** `site.config.ts` `email.fromAddress` and `email.replyTo` (null: the family's
+  `sign-in@` mailbox and help mailbox in `site.families.ts`; personal: sign-in@yokum.app, help@yokum.app).
+- **Card style:** `site.config.ts` `cardStyle` (the template: 'quiet').
+- **AWS account, profile, Amplify app ID, and the user pool's web ACL:** `deploy.config.json` (every
+  AWS-touching script checks it first; the hygiene test allows its `awsAccountId` and `amplifyAppId` and
+  no other IDs; `webAcl` is the account's shared ACL, "own", or null until chosen).
 - **Pools:** one per Amplify branch, plus each developer's sandbox. Never shared, never hand-edited.
 
 ## Rules
@@ -61,9 +64,11 @@ Fill in when the site is created (03 §2 Assurance: tier, pool, and account are 
 12. **Read the guides before changing auth.** auth-kit's README and `node_modules/auth-kit/docs/`
     (the localhost guide and the decision records), and `lib/dev/README.md` here.
 13. **The help address is a role-based mailbox, and required.** Never put a person's own address in
-    `email.replyTo` or the family table (auth-kit refuses one, and `next dev` stops on it). Screens and
-    emails read the address in effect through `lib/accounts.ts` (`effectiveHelp()`, `signInHelp()`),
-    so a Super admin's override (Admin → Settings) shows at once; never hard-code it in a page.
+    `email.replyTo` or the family table unless the owner says the site is deliberately one person's,
+    and then only as `{ address, personal: true }` (register E4c; auth-kit refuses it otherwise, and
+    `next dev` stops on it). Screens and emails read the address in effect through `lib/accounts.ts`
+    (`effectiveHelp()`, `signInHelp()`), so a Super admin's override (Admin → Settings) shows at once;
+    never hard-code it in a page.
 14. **Account creation follows the one setting.** Pages and routes that only some modes have are
     `page.signup.tsx` / `route.signup.ts` (sign-up sites) or `page.request.tsx` / `route.request.ts`
     (request sites); `next.config.ts` makes them routes only there, `lib/public-routes.ts` lists them
@@ -77,10 +82,19 @@ Fill in when the site is created (03 §2 Assurance: tier, pool, and account are 
     don't wrap them in a card of your own, add words above the heading, or restyle their slots beyond
     `authKitStyles`. Words come from auth-kit's copy deck (Oxford commas).
 17. **Every email matches the card.** Send through the site's mailer (`lib/accounts.ts`
-    `accountMailer()`, `lib/email.ts`): the family's sender, the help address as Reply-To, the card's
-    layout and footer. The custom message trigger (`amplify/auth/custom-message/`) is a security
-    control: keep `customMessageHandler` (or wrap your wording in `withAuthKitCustomMessage`) and its
+    `accountMailer()`, `lib/email.ts`): the site's reply-able `sign-in@` mailbox (never `noreply@`;
+    register A10; personal sites only sign-in@yokum.app, F11) under the family's sender name, the help address as Reply-To, the card's layout and
+    footer. The custom message trigger (`amplify/auth/custom-message/`) is a security control: keep
+    `customMessageHandler` (or wrap your wording in `withAuthKitCustomMessage`) and its
     `CUSTOM_MESSAGE_GATE_ENV`.
+18. **Account-change notices stay on.** auth-kit's screens post to `/api/auth-kit/account-notice`
+    after a new passkey or password (register A10); the route (`accountNotices()` in lib/accounts.ts)
+    checks the session itself and emails only the account's own address. `SignIn` gets
+    `notices={{ mounted: true }}`; don't pass `notices={false}`, and keep the rate-limit table on every
+    site (the route counts there).
+19. **One shared web ACL per account** (register F7). The user pool's WAF comes from
+    `deploy.config.json` `webAcl` (amplify/web-acl.ts): the account's shared ACL, or `"own"` only when
+    the owner says the site is alone in its account. Sign-up sites also need `siteWaf` (register D3).
 
 ## Commands
 
@@ -89,7 +103,7 @@ npm ci
 npm run dev              # http://app.localhost:3000 (bound to 127.0.0.1)
 npm run check            # typecheck, lint, unit tests, build, check:prod-build, auth matrix
 npm run test:matrix      # after `npm run build`
-npm run setup            # a new site: name, family, help mailbox, account creation, owner → site.config.ts
+npm run setup            # a new site: name, family, sender, help mailbox, account creation, owner → site.config.ts
 npm run sandbox          # your own sandbox backend (account-checked; ask before deploying)
 npm run personas:seed    # seed personas into the sandbox (account-checked)
 npm run projects:seed    # the sample project's Manager, Contributor, Reader roles (sandbox only)
@@ -98,20 +112,23 @@ npm run waf:smoke -- --url https://<site>   # open sign-up sites, after every de
 
 ## Layout
 
-- `site.config.ts` the site's identity: family, help address, account-creation mode, code lifetime,
-  privacy notice, site web ACL, locked backdrop, email hint, owner; `deploy.config.json` where it deploys
-- `site.families.ts` the families (auth-kit themes since 0.1.8) and each family's help mailbox; the
-  only file allowed to name an employer (with its unit test); `lib/theme.ts` the site's auth-kit theme
+- `site.config.ts` the site's identity: family, sender, help address, card style, account-creation
+  mode, code lifetime, privacy notice, site web ACL, locked backdrop, email hint, owner;
+  `deploy.config.json` where it deploys (account, Region, Amplify app, the user pool's web ACL)
+- `site.families.ts` the families (auth-kit themes since 0.1.8) and each family's sender and help
+  mailbox (held to auth-kit's themes by a test); the only file allowed to name an employer (with its
+  unit test); `lib/theme.ts` the site's auth-kit theme
 - `lib/account-modes.ts` what each account-creation mode turns on; `lib/site-checks.ts` what
   site.config.ts must hold (next.config.ts runs it); `lib/accounts.ts` the help address in effect,
-  Settings, the sign-up and request routes, members' self-service, the request queue, the mailer
+  Settings, the sign-up and request routes, members' self-service, the request queue, the
+  account-change notice route, the mailer
 - `components/auth-scene.tsx` the backdrop behind auth-kit's cards; `lib/backdrop.ts` what it draws and
   the build's lock check (next.config.ts); never derive the backdrop at build time, and change it only
   with `npm run backdrop:pick` or `backdrop:lock`
-- `amplify/` the backend: auth preset (WAF rule modes in `auth/resource.ts`), the custom message and
-  preSignUp triggers (`auth/custom-message/`, `auth/pre-sign-up/`), audit log, invite-expiry schedule,
-  resource access table, site settings table, each mode's account-creation tables and jobs, projects
-  table, SSR compute role
+- `amplify/` the backend: auth preset (`auth/resource.ts`; the user pool's web ACL in `web-acl.ts`),
+  the custom message and preSignUp triggers (`auth/custom-message/`, `auth/pre-sign-up/`), audit log,
+  invite-expiry schedule, resource access table, site settings table, rate-limit table, each mode's
+  account-creation tables and jobs, projects table, SSR compute role
 - `proxy.ts` default-deny proxy, token checks, session refresh, per-request CSP
 - `lib/auth.ts` `auth` and `pages` guards; `lib/capabilities.ts` the one capability map
 - `lib/admin.ts`, `lib/audit-log.ts`, `lib/alerts.ts` the admin area's actions, log, and alerts;
@@ -123,7 +140,8 @@ npm run waf:smoke -- --url https://<site>   # open sign-up sites, after every de
 - `app/` pages: `/`, `/sign-in`, `/signed-out` public (and `/sign-up`, `/request-access` where the mode has
   them); `/account`, `/account/sign-in-method` (the required first credential), `/app`, `/app/projects`
   members (each project by its resource roles: README, "Projects"); `/admin` every admin role, and
-  `/admin/settings` Super admins and the owner (README, "Roles", "The help address")
+  `/admin/settings` Super admins and the owner (README, "Roles", "The sender and the help address");
+  `app/api/auth-kit/account-notice` the account-change notices (signed-in accounts)
 - `scripts/` local tools: `setup.mjs`, `seed-sample-project.mjs`, `waf-smoke-test.mjs`, the preflight,
   the backdrop picker's; never shipped
 - `test/unit/` unit and static checks; `test/matrix/` the auth matrix

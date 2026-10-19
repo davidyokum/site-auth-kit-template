@@ -4,14 +4,21 @@
 // What setup asks, and where each answer goes (site.config.ts unless noted):
 //   site name              name, project (a slug of it), and personas.json's .test domain
 //   family                 family (one of site.families.ts's)
-//   help mailbox           email.replyTo (null when it's the family's own mailbox)
+//   sender                 email.fromAddress (null when it's the family's shared sender; asked only
+//                          where the family has none: personal sites send from sign-in@yokum.app)
+//   help mailbox           email.replyTo (null when it's the family's own mailbox; a person's own
+//                          address only acknowledged, { address, personal: true }: register E4c)
 //   account creation       accountCreation (+ privacyNoticeUrl on sign-up sites)
 //   owner's email          ownerEmail, alertEmails, and inviteDomains (its domain) while that's the template's
 //   owner's name           ownerName (work families only: their help screens name the owner)
 //
+// Not asked: the card style (site.config.ts `cardStyle`, Quiet by default; register E5), the code
+// lifetime (10 minutes, register A7), and the site web ACL a sign-up site needs (`siteWaf`: it has to
+// exist in AWS first, so setup names it as a next step).
+//
 // Every value is public (it reaches the browser or AWS tags). Setup never asks for, or writes, a
 // password, a key, a token, or an AWS account ID.
-import { helpAddressProblems } from 'auth-kit/themes';
+import { helpAddressProblems, senderAddressProblems } from 'auth-kit/themes';
 
 export const MODES = ['invite', 'request', 'domains', 'open'];
 
@@ -49,8 +56,8 @@ function isLink(value) {
 
 /**
  * Checks and normalizes the answers. Returns `{ answers, problems }`; write nothing while there are problems.
- * @param {{ name?: string, family?: string, help?: string, mode?: string, domains?: string[] | string, requestsAlso?: boolean, privacyNoticeUrl?: string | null, ownerEmail?: string, ownerName?: string | null }} raw
- * @param {{ familyHelpMailbox: Record<string, string | null>, families: readonly string[], namesOwner: Record<string, boolean> }} context
+ * @param {{ name?: string, family?: string, sender?: string, help?: string, helpPersonal?: boolean, mode?: string, domains?: string[] | string, requestsAlso?: boolean, privacyNoticeUrl?: string | null, ownerEmail?: string, ownerName?: string | null }} raw
+ * @param {{ familyHelpMailbox: Record<string, string | null>, familySender: Record<string, string | null>, families: readonly string[], namesOwner: Record<string, boolean> }} context
  */
 export function checkAnswers(raw, context) {
   const FAMILIES = context.families;
@@ -64,9 +71,16 @@ export function checkAnswers(raw, context) {
   const family = String(raw.family ?? '').trim().toLowerCase();
   if (!FAMILIES.includes(family)) problems.push(`The family must be one of ${FAMILIES.join(', ')}.`);
 
+  const familySender = FAMILIES.includes(family) ? (context.familySender?.[family] ?? null) : null;
+  const sender = String(raw.sender ?? familySender ?? '').trim().toLowerCase();
+  if (!sender) problems.push(`Sender: ${FAMILIES.includes(family) ? `the ${family} family has no shared sender, so give` : 'give'} this site's sign-in@ mailbox on a domain verified in SES (e.g. sign-in@reports.example.org).`);
+  // A family with a shared sender sends only from it (personal: sign-in@yokum.app, register F11).
+  else for (const p of senderAddressProblems(sender, FAMILIES.includes(family) ? family : undefined)) problems.push(`Sender: ${p}`);
+
   const familyMailbox = FAMILIES.includes(family) ? (context.familyHelpMailbox[family] ?? null) : null;
   const help = String(raw.help ?? familyMailbox ?? '').trim().toLowerCase();
-  for (const p of helpAddressProblems(help)) problems.push(`Help mailbox: ${p}`);
+  const helpPersonal = raw.helpPersonal === true;
+  for (const p of helpAddressProblems(help, { personal: helpPersonal })) problems.push(`Help mailbox: ${p}`);
 
   const mode = String(raw.mode ?? 'invite').trim().toLowerCase();
   let accountCreation = null;
@@ -100,15 +114,25 @@ export function checkAnswers(raw, context) {
       name,
       project,
       family,
-      // The family's own mailbox is written as null, so the site follows its family's.
-      replyTo: help && help === familyMailbox ? null : help,
+      // The family's own sender and mailbox are written as null, so the site follows its family's.
+      fromAddress: sender && sender === familySender ? null : sender,
+      sender,
+      replyTo: helpPersonal ? { address: help, personal: true } : help && help === familyMailbox ? null : help,
       help,
+      helpPersonal,
       accountCreation,
       privacyNoticeUrl: privacy,
       ownerEmail,
       ownerName,
     },
   };
+}
+
+/** The TypeScript literal for a help address setting: null, a mailbox, or an acknowledged person's own address. */
+export function helpSettingLiteral(setting) {
+  if (setting === null) return 'null';
+  if (typeof setting === 'object') return `{ address: ${tsString(setting.address)}, personal: true }`;
+  return tsString(setting);
 }
 
 /** The TypeScript literal for an accountCreation value. */
@@ -144,7 +168,8 @@ export function applyAnswers(text, a) {
   out = replaceConfigLine(out, '  ', 'project', tsString(a.project));
   out = replaceConfigLine(out, '  ', 'ownerEmail', tsString(a.ownerEmail), ' as string | null');
   out = replaceConfigLine(out, '  ', 'ownerName', a.ownerName === null ? 'null' : tsString(a.ownerName), ' as string | null');
-  out = replaceConfigLine(out, '    ', 'replyTo', a.replyTo === null ? 'null' : tsString(a.replyTo), ' as string | null');
+  out = replaceConfigLine(out, '    ', 'fromAddress', a.fromAddress === null ? 'null' : tsString(a.fromAddress), ' as string | null');
+  out = replaceConfigLine(out, '    ', 'replyTo', helpSettingLiteral(a.replyTo), ' as SiteHelpAddress | null');
   out = replaceConfigLine(out, '  ', 'accountCreation', accountCreationLiteral(a.accountCreation), ' as AccountCreationSettings');
   out = replaceConfigLine(out, '  ', 'privacyNoticeUrl', a.privacyNoticeUrl === null ? 'null' : tsString(a.privacyNoticeUrl), ' as string | null');
   out = replaceConfigLine(out, '  ', 'alertEmails', `[${tsString(a.ownerEmail)}]`, ' as readonly string[]');
@@ -167,7 +192,8 @@ export function describeAnswers(a) {
     `  name              ${a.name}`,
     `  project           ${a.project}  (AWS tags; personas on ${a.project}.test)`,
     `  family            ${a.family}`,
-    `  help mailbox      ${a.help}${a.replyTo === null ? '  (the family’s)' : ''}`,
+    `  sender            ${a.sender}${a.fromAddress === null ? '  (the family’s)' : '  (its domain must be verified in SES)'}`,
+    `  help mailbox      ${a.help}${a.replyTo === null ? '  (the family’s)' : a.helpPersonal ? '  (a person’s own, on purpose)' : ''}`,
     `  accounts          ${mode}`,
     ...(a.privacyNoticeUrl !== null ? [`  privacy notice    ${a.privacyNoticeUrl}`] : []),
     `  owner             ${a.ownerEmail}${a.ownerName ? ` (${a.ownerName})` : ''}`,

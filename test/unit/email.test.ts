@@ -10,8 +10,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createSiteMailer, inCardLayout, type MailSite, senderMailbox } from '@/lib/email';
 import { site } from '@/site.config';
 
-const personal: MailSite = { name: 'Example Site', family: 'personal', email: { fromAddress: 'noreply@example.com', replyTo: 'help@example.com' } };
-const unc: MailSite = { ...personal, family: 'unc' };
+const personal: MailSite = { name: 'Example Site', family: 'personal', email: { fromAddress: null, replyTo: 'help@example.com' } };
+const unc: MailSite = { ...personal, family: 'unc', email: { fromAddress: 'sign-in@example.com', replyTo: 'help@example.com' } };
 const signInUrl = 'https://www.example.com/sign-in';
 
 function fakeSes() {
@@ -24,12 +24,21 @@ const textOf = (input: SendEmailCommandInput | undefined) => input?.Content?.Sim
 const htmlOf = (input: SendEmailCommandInput | undefined) => input?.Content?.Simple?.Body?.Html?.Data ?? '';
 
 describe('the sender', () => {
-  it('uses the family’s display name, quoted when RFC 5322 needs it, encoded when it isn’t ASCII', () => {
-    expect(senderMailbox(personal)).toBe('Example Site <noreply@example.com>');
-    expect(senderMailbox(unc)).toBe('"Example Site (UNC)" <noreply@example.com>');
-    expect(senderMailbox({ ...personal, name: 'Say "hi"' })).toBe('"Say \\"hi\\"" <noreply@example.com>');
-    expect(senderMailbox({ ...personal, name: 'Café' })).toBe(`=?UTF-8?B?${Buffer.from('Café').toString('base64')}?= <noreply@example.com>`);
+  it('is the site’s sign-in@ mailbox under the family’s display name, quoted when RFC 5322 needs it, encoded when it isn’t ASCII (register A10, E4a)', () => {
+    expect(senderMailbox(unc)).toBe('"Example Site (UNC)" <sign-in@example.com>');
+    expect(senderMailbox({ ...unc, name: 'Café Reports' })).toBe(`=?UTF-8?B?${Buffer.from('Café Reports (UNC)').toString('base64')}?= <sign-in@example.com>`);
     expect(() => senderMailbox({ ...personal, name: 'Two\nlines' })).toThrow(/line breaks/);
+  });
+
+  it('is the family’s shared sender when the site has none of its own, and personal sites send only from it (register F11)', () => {
+    expect(senderMailbox(personal)).toBe('Example Site <sign-in@yokum.app>');
+    expect(() => senderMailbox({ ...personal, email: { fromAddress: 'sign-in@example.com' } })).toThrow(/Personal family's sender/);
+    expect(() => senderMailbox({ ...unc, email: { fromAddress: null, replyTo: 'help@example.com' } })).toThrow(/needs a sender[\s\S]*email\.fromAddress/);
+  });
+
+  it('refuses a sender that can’t be replied to, or isn’t the sign-in@ mailbox (auth-kit refuses both everywhere)', () => {
+    expect(() => senderMailbox({ ...unc, email: { fromAddress: 'noreply@example.com' } })).toThrow(/can't be replied to/);
+    expect(() => senderMailbox({ ...unc, email: { fromAddress: 'reports@example.com' } })).toThrow(/sign-in@ mailbox/);
   });
 
   it('defaults to this site’s config', () => {
@@ -68,7 +77,7 @@ describe('the site’s mailer (createSiteMailer)', () => {
       expiresAt,
     });
     const [input] = ses.sent;
-    expect(input?.FromEmailAddress).toBe('"Example Site (UNC)" <noreply@example.com>');
+    expect(input?.FromEmailAddress).toBe('"Example Site (UNC)" <sign-in@example.com>');
     expect(input?.ReplyToAddresses).toEqual(['help@example.com']);
     expect(input?.Destination?.ToAddresses).toEqual(['new.person@example.com']);
     expect(textOf(input)).toMatch(/This site is managed by UNC-Chapel Hill\. Help: help@example\.com\.$/);
@@ -98,7 +107,7 @@ describe('the site’s mailer (createSiteMailer)', () => {
       at: expiresAt,
     });
     const [input] = ses.sent;
-    expect(input?.FromEmailAddress).toBe('Example Site <noreply@example.com>');
+    expect(input?.FromEmailAddress).toBe('Example Site <sign-in@yokum.app>');
     expect(input?.ReplyToAddresses).toEqual(['help@example.com']);
     expect(input?.Destination?.ToAddresses).toEqual(['owner@example.com']);
     expect(textOf(input)).toMatch(/a Super admin of Example Site[\s\S]*\n\nHelp: help@example\.com\.$/);
@@ -145,7 +154,7 @@ describe('the site’s mailer (createSiteMailer)', () => {
       to: ['someone@example.com'],
       email: { subject: 'Hi', text: 'Body', html: '<p>Body</p>' },
     });
-    expect(ses.sent[0]?.FromEmailAddress).toBe('Example Site <noreply@example.com>');
+    expect(ses.sent[0]?.FromEmailAddress).toBe('Example Site <sign-in@yokum.app>');
     expect(ses.sent[0]?.ReplyToAddresses).toEqual(['help@example.com']);
     expect(textOf(ses.sent[0])).toBe('Body');
   });
@@ -159,15 +168,15 @@ describe('Cognito’s own email (amplify/auth/resource.ts)', () => {
   // Importing the resource runs auth-kit's preset validation, so this also proves the pool accepts
   // the family's sender name and the help address. (Amplify allows one defineAuth per process: one
   // import per file.)
-  it('comes from the family’s sender name, with the help address as Reply-To', async () => {
+  it('comes from the site’s sign-in@ mailbox under the family’s sender name, with the help address as Reply-To', async () => {
     vi.resetModules();
     vi.doMock('@/site.config', async (importOriginal) => {
       const actual = await importOriginal<typeof import('@/site.config')>();
-      const email = { fromAddress: 'noreply@example.com', replyTo: 'reports-help@example.org' };
+      const email = { fromAddress: 'sign-in@reports.example.org', replyTo: 'reports-help@example.org' };
       return { ...actual, site: { ...actual.site, name: 'Example Site', family: 'unc', email } };
     });
     const { authOptions } = await import('@/amplify/auth/resource');
-    expect(authOptions.email).toEqual({ fromAddress: 'noreply@example.com', fromName: 'Example Site (UNC)', replyTo: 'reports-help@example.org' });
+    expect(authOptions.email).toEqual({ fromAddress: 'sign-in@reports.example.org', fromName: 'Example Site (UNC)', family: 'unc', replyTo: 'reports-help@example.org' });
     expect(authOptions.accountCreation).toEqual(site.accountCreation);
     expect(authOptions.codeLifetimeMinutes).toBe(site.codeLifetimeMinutes);
   });

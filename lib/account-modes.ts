@@ -3,12 +3,12 @@
  * on, in one place: which pages and routes exist, which tables and jobs the backend deploys, and
  * which screens the sign-in card links to.
  *
- * - Sign-up sites (`domains`, `open`): /sign-up and its route, the rate-limit table, the 24-hour
- *   sweep of never-verified sign-ups, members' own email change and delete on My account, and (in
- *   `domains` mode) the preSignUp trigger.
+ * - Sign-up sites (`domains`, `open`): /sign-up and its route, the 24-hour sweep of never-verified
+ *   sign-ups, the site web ACL (required), members' own email change and delete on My account, and
+ *   (in `domains` mode) the preSignUp trigger.
  * - Request sites (`request`, or `domains` with `requestsAlso`): /request-access and its route, the
- *   request and rate-limit tables, the daily digest, and the People page's "Pending requests" tab.
- * - Invite only: none of it.
+ *   request table, the daily digest, and the People page's "Pending requests" tab.
+ * - Invite only: none of it. (The rate-limit table is on every site: the account-change notices use it.)
  *
  * Pure, with no imports and no path aliases: next.config.ts (which pages exist), the Amplify backend
  * (which tables and jobs deploy), and the app all read it. The rules are auth-kit's own
@@ -34,8 +34,8 @@ export function takesRequests(setting: AccountCreationLike): boolean {
   return setting.mode === 'request' || (setting.mode === 'domains' && setting.requestsAlso === true);
 }
 
-/** The sign-up or request routes need the per-address and per-IP counters. */
-export function needsRateLimits(setting: AccountCreationLike): boolean {
+/** The site has the sign-up or request routes (`/api/auth/sign-up`, `/api/auth/request-access`). */
+export function hasAccountCreationRoutes(setting: AccountCreationLike): boolean {
   return takesSignUps(setting) || takesRequests(setting);
 }
 

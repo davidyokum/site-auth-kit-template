@@ -1,15 +1,21 @@
 #!/usr/bin/env node
 // `npm run setup`: the first step of a new site made from this template. It asks for the site's
-// name, its family, its help mailbox, how people get an account, and the owner's email address, then
-// writes them into site.config.ts (and puts personas.json on the site's own .test domain).
+// name, its family, its sender, its help mailbox, how people get an account, and the owner's email
+// address, then writes them into site.config.ts (and puts personas.json on the site's own .test
+// domain). The card style isn't asked: Quiet is the default (register E5); change `cardStyle` in
+// site.config.ts if the site wants another.
 //
 // Run it again any time: each question offers the current value. Nothing here touches AWS, and it
 // never asks for or writes a secret (every answer is public: it reaches the browser or AWS tags).
 //
 // Non-interactive (scripts, CI): pass every answer and --yes, e.g.
-//   npm run setup -- --name "Budget Reports" --family personal --help help@yokumlab.com \
+//   npm run setup -- --name "Budget Reports" --family personal --help help@yokum.app \
 //     --mode invite --owner-email owner@example.org --yes
+// A work-family site adds --sender sign-in@<its verified domain> (personal sites send from
+// sign-in@yokum.app, the family's).
 // Domains mode adds --domains example.org,example.com [--requests-also] and --privacy /privacy.
+// A person's own help address (register E4c: a site that's deliberately one person) needs
+// --help-personal.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { stdin, stdout } from 'node:process';
@@ -25,7 +31,9 @@ const { values: flags } = parseArgs({
   options: {
     name: { type: 'string' },
     family: { type: 'string' },
+    sender: { type: 'string' },
     help: { type: 'string' },
+    'help-personal': { type: 'boolean' },
     mode: { type: 'string' },
     domains: { type: 'string' },
     'requests-also': { type: 'boolean' },
@@ -40,8 +48,9 @@ const { values: flags } = parseArgs({
 const { config, families } = await loadSiteModules(root);
 const current = config.site;
 const familyHelpMailbox = families.FAMILY_HELP_MAILBOX;
+const familySender = families.FAMILY_SENDER;
 const FAMILIES = [...families.SITE_FAMILIES];
-const context = { familyHelpMailbox, families: FAMILIES, namesOwner: families.FAMILY_NAMES_OWNER };
+const context = { familyHelpMailbox, familySender, families: FAMILIES, namesOwner: families.FAMILY_NAMES_OWNER };
 const interactive = !flags.yes;
 const rl = interactive ? createInterface({ input: stdin, output: stdout }) : null;
 
@@ -69,15 +78,43 @@ try {
   const name = await askUntil('Site name', String(current.name), flags.name, (v) => (v.trim() ? null : 'The site needs a name.'));
   const family = await askUntil(`Family (${FAMILIES.join(', ')})`, String(current.family), flags.family, (v) => (FAMILIES.includes(v.trim().toLowerCase()) ? null : `One of ${FAMILIES.join(', ')}.`));
   const fam = family.trim().toLowerCase();
-  const currentHelp = current.email?.replyTo ?? familyHelpMailbox[fam] ?? '';
+  const probe = { name, family: fam, mode: 'invite', ownerEmail: 'owner@example.org' };
+  // A family with a shared sender sends only from it (personal: sign-in@yokum.app, register F11), so
+  // the question is asked only where the family has none.
+  const currentSender = current.email?.fromAddress ?? familySender[fam] ?? '';
+  const senderProblem = (v) => checkAnswers({ ...probe, sender: v || ' ' }, context).problems.find((p) => p.startsWith('Sender')) ?? null;
+  let sender;
+  if (familySender[fam]) {
+    sender = flags.sender ?? familySender[fam];
+    const problem = senderProblem(sender);
+    if (problem) throw new Error(problem);
+    console.log(`Sender: ${sender} (the ${fam} family's)`);
+  } else {
+    sender = await askUntil('Sender: the sign-in@ mailbox auth email comes from, on a domain verified in SES', String(currentSender), flags.sender, senderProblem);
+  }
+  const replyTo = current.email?.replyTo;
+  const currentHelp = (replyTo !== null && typeof replyTo === 'object' ? replyTo.address : replyTo) ?? familyHelpMailbox[fam] ?? '';
+  let helpPersonal = flags['help-personal'] ?? (replyTo !== null && typeof replyTo === 'object' && replyTo.personal === true);
+  const helpProblem = (v, personal) => checkAnswers({ ...probe, sender, help: v, helpPersonal: personal }, context).problems.find((p) => p.startsWith('Help mailbox')) ?? null;
   const help = await askUntil(
     `Help mailbox: the role-based address people write to for help signing in${familyHelpMailbox[fam] ? ` (the ${fam} family's is ${familyHelpMailbox[fam]})` : ''}`,
     String(currentHelp),
     flags.help,
-    (v) => checkAnswers({ name, family: fam, help: v, mode: 'invite', ownerEmail: 'owner@example.org' }, context).problems.find((p) => p.startsWith('Help mailbox')) ?? null,
+    (v) => {
+      const problem = helpProblem(v, false);
+      // A person's own address passes only on purpose (register E4c): confirmed below, or --help-personal.
+      if (problem && helpProblem(v, true) === null) return helpPersonal || rl ? null : `${problem} Pass --help-personal if that's on purpose.`;
+      return problem;
+    },
   );
+  if (helpProblem(help, false) === null) {
+    helpPersonal = false;
+  } else if (!helpPersonal) {
+    helpPersonal = /^y/i.test(await ask("That looks like a person's own address. Is that on purpose, for a site that's deliberately one person's (register E4c)? (y/N)", '', undefined));
+    if (!helpPersonal) throw new Error('Use a role-based help mailbox (help@…, apps-help@…), then run setup again.');
+  }
   const currentMode = current.accountCreation?.mode ?? 'invite';
-  console.log('\nHow do people get an account?\n  invite   invite only (an admin invites; the default)\n  request  anyone may ask; an admin approves\n  domains  addresses on a list sign up themselves\n  open     anyone signs up (needs the site web ACL first; README, "Account creation")');
+  console.log('\nHow do people get an account?\n  invite   invite only (an admin invites; the default)\n  request  anyone may ask; an admin approves\n  domains  addresses on a list sign up themselves (needs the site web ACL first)\n  open     anyone signs up (needs the site web ACL first; README, "Account creation")');
   const mode = await askUntil(`Account creation (${MODES.join(', ')})`, currentMode, flags.mode, (v) => (MODES.includes(v.trim().toLowerCase()) ? null : `One of ${MODES.join(', ')}.`));
   const m = mode.trim().toLowerCase();
   let domains;
@@ -91,7 +128,7 @@ try {
   const ownerEmail = await askUntil("The owner's email address (the one person in the owner group)", String(current.ownerEmail ?? ''), flags['owner-email'], (v) => (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim()) ? null : 'An email address.'));
   const ownerName = context.namesOwner[fam] === true ? await ask("The owner's name, as the help screens show it (Enter to skip)", String(current.ownerName ?? ''), flags['owner-name']) : null;
 
-  const { answers, problems } = checkAnswers({ name, family: fam, help, mode: m, domains, requestsAlso, privacyNoticeUrl, ownerEmail, ownerName }, context);
+  const { answers, problems } = checkAnswers({ name, family: fam, sender, help, helpPersonal, mode: m, domains, requestsAlso, privacyNoticeUrl, ownerEmail, ownerName }, context);
   if (problems.length > 0) throw new Error(problems.join('\n'));
   console.log(`\nThis goes into site.config.ts:\n${describeAnswers(answers).join('\n')}\n`);
   if (rl && /^n/i.test(await ask('Write it? (Y/n)', '', undefined))) {
@@ -105,7 +142,8 @@ try {
   writeFileSync(personasPath, applyPersonaDomain(readFileSync(personasPath, 'utf8'), answers.project));
   console.log('Wrote site.config.ts and personas.json. Next:');
   console.log('  - deploy.config.json: the AWS profile and account this site deploys to (README, "Start a new site", step 4)');
-  if (m === 'open') console.log('  - siteWaf in site.config.ts: the site web ACL and its JavaScript integration (required for open sign-up)');
+  if (answers.fromAddress !== null) console.log(`  - verify ${answers.sender.slice(answers.sender.indexOf('@') + 1)} in Amazon SES in the account this site deploys to (SPF, DKIM, and DMARC published)`);
+  if (m === 'domains' || m === 'open') console.log('  - siteWaf in site.config.ts: the site web ACL and its JavaScript integration (required on sign-up sites; README, "Account creation")');
   if (m !== 'invite') console.log(`  - ${m === 'request' ? 'the request page' : 'the sign-up page'} links your privacy notice: make sure it exists`);
   console.log('  - npm run check, then commit');
 } catch (error) {

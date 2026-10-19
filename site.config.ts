@@ -9,13 +9,14 @@
  * Everything here is public (it ends up in the browser bundle or in AWS tags). Never put a secret,
  * an AWS account ID, or a pool ID here. Where to deploy lives in `deploy.config.json`.
  *
- * `npm run setup` rewrites single lines of this file (name, project, family, email.replyTo,
- * accountCreation, ownerEmail, alertEmails), and `npm run backdrop:pick` the `backdrop` line: keep
- * each of those on one line in the form it has here.
+ * `npm run setup` rewrites single lines of this file (name, project, family, email.fromAddress,
+ * email.replyTo, accountCreation, ownerEmail, alertEmails), and `npm run backdrop:pick` the
+ * `backdrop` line: keep each of those on one line in the form it has here.
  */
 import type { AccountCreationSettings } from 'auth-kit/accounts';
 import type { BackdropStyleId } from 'auth-kit/backdrops';
-import type { SiteFamily } from './site.families';
+import type { CardStyle } from 'auth-kit/themes';
+import type { SiteFamily, SiteHelpAddress } from './site.families';
 
 /**
  * The art behind the sign-in card, as stored. Locked: `{ style, seed, styleVersion, locked: true }`,
@@ -70,6 +71,16 @@ export const site = {
    */
   emailHint: null as string | null,
 
+  /**
+   * The sign-in card's style (register E5; auth-kit's `cardStyle`): 'quiet' (the default: a white card,
+   * the defined 3:1 edge, a soft shadow, no monogram), 'monogram' (Quiet plus the site's initials as a
+   * small badge above the heading), 'frosted' (a translucent, blurred panel), 'plain' (no card: the
+   * form sits in a soft, readable column the backdrop fades into), or 'porcelain' (a luminous sheet,
+   * rounder controls). Every card the site shows takes it: sign-in, sign-up, request access, the
+   * chooser, signed out, and the error and not-found pages. Card Studio draws all five.
+   */
+  cardStyle: 'quiet' as CardStyle,
+
   /** Slug for AWS tags and metric names: lowercase letters, digits, and hyphens. */
   project: 'example-site',
 
@@ -97,23 +108,33 @@ export const site = {
   tier: 2,
 
   /**
-   * Auth email (emailed codes, invites, alerts) goes through Amazon SES from `fromAddress`. Its domain
-   * must be a verified SES identity in the AWS account you deploy to, with SPF, DKIM, and DMARC
-   * published. The sender's display name comes from `name` and `family`.
+   * Auth email (emailed codes, invites, alerts, account notices) goes through Amazon SES.
    *
-   * `replyTo` is the site's HELP ADDRESS (required; auth-kit ADR 0024): a role-based mailbox, never a
-   * person's own address. It's the Reply-To on every auth email (Cognito's code emails included),
-   * the "Help: …" line at the foot of every email, and the address the sign-in card's help screens
-   * name. Null: the family's mailbox (site.families.ts; personal sites: help@yokumlab.com).
-   * A site with a mailbox of its own sets it here, e.g.:
-   *   replyTo: 'reports-help@example.org' as string | null,
+   * `fromAddress` is the SENDER: always the reply-able `sign-in@` mailbox (register A10; auth-kit
+   * refuses `noreply@` or any other local part). Null: the family's shared sender (site.families.ts;
+   * personal sites: sign-in@yokum.app, verified in the personal account). Work-family sites send from
+   * `sign-in@` on their own domain, e.g.:
+   *   fromAddress: 'sign-in@reports.example.org' as string | null,
+   * Its domain must be a verified SES identity in the AWS account you deploy to, with SPF, DKIM, and
+   * DMARC published. The sender's display name comes from `name` and `family` ("{Site} (UNC)").
+   *
+   * `replyTo` is the site's HELP ADDRESS (required; auth-kit ADR 0024): a role-based mailbox. It's the
+   * Reply-To on every auth email (Cognito's code emails included), the "Help: …" line at the foot of
+   * every email, and the address the sign-in card's help screens name. Null: the family's mailbox
+   * (site.families.ts; personal sites: help@yokum.app). A site with a mailbox of its own sets it, e.g.:
+   *   replyTo: 'reports-help@example.org' as SiteHelpAddress | null,
+   * A person's own address only on purpose, for a site that deliberately signals it's one person
+   * (register E4c; never the default):
+   *   replyTo: { address: 'jordan.lee@example.org', personal: true } as SiteHelpAddress | null,
    * A Super admin can change it without a deploy: Admin → Settings → "Sign-in help" (needs a recent
    * sign-in and a reason; audited; the owner and every Super admin are emailed, and the change is
    * undone if that email can't be sent). It stays on this address's domain (or the family's).
+   *
+   * `npm run setup` rewrites both lines: keep each on one line in this form.
    */
   email: {
-    fromAddress: 'noreply@example.com',
-    replyTo: null as string | null,
+    fromAddress: null as string | null,
+    replyTo: null as SiteHelpAddress | null,
   },
 
   /**
@@ -133,12 +154,13 @@ export const site = {
    *       domains. Addresses on the list create their own account (/sign-up); with requestsAlso,
    *       everyone else can request access. A domain also takes its subdomains, and a bare top-level
    *       domain ('edu') takes every address under it, students and alumni included: say so on purpose.
-   *       The backend adds the preSignUp trigger (it re-checks the list), the rate-limit table, and
-   *       the 24-hour cleanup of never-verified sign-ups; set `privacyNoticeUrl`. `siteWaf` is optional.
+   *       The backend adds the preSignUp trigger (it re-checks the list) and the 24-hour cleanup of
+   *       never-verified sign-ups. Set `privacyNoticeUrl` and `siteWaf` (both required: every sign-up
+   *       gets the silent WAF check, register D3), and run the WAF smoke test after every deploy
+   *       (`npm run waf:smoke -- --url https://<site>`).
    *
    *   { mode: 'open' }  Open sign-up: anyone with an email address (public profiles, say). Needs
-   *       everything 'domains' needs, plus `siteWaf` (required: the build fails without it) and the
-   *       WAF smoke test after every deploy (`npm run waf:smoke -- --url https://<site>`).
+   *       everything 'domains' needs.
    *
    * Members on sign-up sites ('domains', 'open') change their own email and delete their own account
    * from My account. Keep it on one line; `npm run setup` rewrites it.
@@ -146,10 +168,11 @@ export const site = {
   accountCreation: { mode: 'invite' } as AccountCreationSettings,
 
   /**
-   * How long an emailed code works, in minutes (register A7): the pool's sign-in session, and every
-   * screen and email that says it. auth-kit's default is 3; Cognito allows 3 to 15.
+   * How long an emailed code works, in minutes (register A7: 10, decided 2026-10-19, kinder to state
+   * email screening; the code is single-use, 8 digits, and rate-limited): the pool's sign-in session,
+   * and every screen and email that says it. auth-kit's default is 10; Cognito allows 3 to 15.
    */
-  codeLifetimeMinutes: 3,
+  codeLifetimeMinutes: 10,
 
   /**
    * Sign-up and request sites: the privacy notice (what the site keeps about people, and why),
@@ -163,8 +186,9 @@ export const site = {
 
   /**
    * The site's own web ACL in front of the sign-up and request routes, and its JavaScript
-   * integration. Required in 'open' mode, optional in 'domains' mode, unused otherwise (README,
-   * "Account creation"). Null until you make one.
+   * integration. Required on sign-up sites ('domains' and 'open': every sign-up gets the silent WAF
+   * check, register D3; `next dev`, builds, and synthesis fail without it), optional on request
+   * sites, unused on invite-only ones (README, "Account creation"). Null until you make one.
    */
   siteWaf: null as SiteWaf | null,
 

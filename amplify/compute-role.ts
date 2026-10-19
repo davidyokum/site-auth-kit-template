@@ -8,15 +8,19 @@
  *   disable, re-enable, sign out, delete; and AdminGetUser / AdminListGroupsForUser for the
  *   `{ live: true }` re-reads), on this pool only;
  * - `ses:SendEmail` from the site's SES identity, for invites, alerts, and account notices;
+ * - the rate-limit counters: UpdateItem only, on every site (the account-change notices are limited
+ *   per account; register A10). The notice route reads the account's own address with ListUsers, which
+ *   the People policy already grants on this pool, and checks a new passkey with the person's own
+ *   token (no IAM);
  * - the audit log: PutItem and Query only (`grantAppendAndQuery`);
  * - who has access to which project (auth-kit's `ResourceAccessTable`): GetItem, PutItem, DeleteItem,
  *   and Query on that table only (`grantApp`);
  * - the projects table: GetItem, BatchGetItem, PutItem, Query;
  * - the site settings table (a Super admin's sign-in help address): GetItem, PutItem, DeleteItem;
- * - on sites that take sign-ups or requests (site.config.ts `accountCreation`): UpdateItem on the
- *   rate-limit counters, Query/GetItem/PutItem on the request queue (request sites), and on sign-up
- *   sites the Cognito calls the sign-up route and members' own account actions make (find, create,
- *   update their own address, sign out, delete), on this pool only.
+ * - on sites that take sign-ups or requests (site.config.ts `accountCreation`): Query/GetItem/PutItem
+ *   on the request queue (request sites), and on sign-up sites the Cognito calls the sign-up route and
+ *   members' own account actions make (find, create, update their own address, sign out, delete), on
+ *   this pool only.
  *
  * Amplify doesn't attach it by itself: once per app, set it as the app's compute role (README,
  * "Deploy on Amplify"). The ARN is in amplify_outputs.json as `custom.computeRoleArn`.
@@ -35,8 +39,8 @@ export interface SsrComputeRoleProps {
   projects: ProjectsTable;
   /** Settings changed without a deploy (the Super admin's sign-in help address). */
   siteSettings: SiteSettingsTable;
-  /** The sign-up and request routes' counters (sites that take either). */
-  rateLimits?: RateLimitTable;
+  /** The counters: the account-change notices on every site, and the sign-up and request routes where they exist. */
+  rateLimits: RateLimitTable;
   /** The request queue (request sites). */
   accessRequests?: AccessRequestTable;
   /** Sign-up sites: the sign-up route's and members' own Cognito calls. */
@@ -72,7 +76,7 @@ export class SsrComputeRole extends Construct {
     props.resourceAccess.grantApp(this.role);
     props.projects.grantApp(this.role);
     props.siteSettings.grantApp(this.role);
-    props.rateLimits?.grantApp(this.role);
+    props.rateLimits.grantApp(this.role);
     props.accessRequests?.grantApp(this.role);
   }
 }

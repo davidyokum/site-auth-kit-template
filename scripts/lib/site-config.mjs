@@ -18,7 +18,7 @@ export async function loadSiteConfig(root) {
 /**
  * site.config.ts and site.families.ts, both.
  * @param {string} root the project root
- * @returns {Promise<{ config: { site: Record<string, unknown> & { name: string, family: string, backdrop: unknown } }, families: { FAMILY_HELP_MAILBOX: Record<string, string | null>, SITE_FAMILIES: readonly string[], FAMILY_NAMES_OWNER: Record<string, boolean> } }>}
+ * @returns {Promise<{ config: { site: Record<string, unknown> & { name: string, family: string, backdrop: unknown } }, families: { FAMILY_HELP_MAILBOX: Record<string, string | null>, FAMILY_SENDER: Record<string, string | null>, SITE_FAMILIES: readonly string[], FAMILY_NAMES_OWNER: Record<string, boolean> } }>}
  */
 export async function loadSiteModules(root) {
   const dir = mkdtempSync(join(tmpdir(), 'site-config-'));

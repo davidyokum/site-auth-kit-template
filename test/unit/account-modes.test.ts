@@ -5,7 +5,7 @@
  */
 import { allowsSelfSignUp, normalizeAccountCreation, takesAccessRequests } from 'auth-kit/accounts';
 import { describe, expect, it } from 'vitest';
-import { type AccountCreationLike, accountCreationPageExtensions, needsRateLimits, takesRequests, takesSignUps } from '@/lib/account-modes';
+import { type AccountCreationLike, accountCreationPageExtensions, hasAccountCreationRoutes, takesRequests, takesSignUps } from '@/lib/account-modes';
 import { site } from '@/site.config';
 
 const SETTINGS: AccountCreationLike[] = [
@@ -22,7 +22,7 @@ describe('the account-creation modes (lib/account-modes.ts)', () => {
       const normalized = normalizeAccountCreation(setting);
       expect(takesSignUps(setting), JSON.stringify(setting)).toBe(allowsSelfSignUp(normalized));
       expect(takesRequests(setting), JSON.stringify(setting)).toBe(takesAccessRequests(normalized));
-      expect(needsRateLimits(setting)).toBe(allowsSelfSignUp(normalized) || takesAccessRequests(normalized));
+      expect(hasAccountCreationRoutes(setting)).toBe(allowsSelfSignUp(normalized) || takesAccessRequests(normalized));
     }
   });
 
