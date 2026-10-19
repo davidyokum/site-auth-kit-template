@@ -19,6 +19,10 @@ export default defineConfig([
             { name: 'auth-kit/testing', message: 'Test-only: never import it from app code.' },
             { name: 'auth-kit/backdrops/picker', message: 'Dev-only: import it only from lib/dev/backdrop-picker.tsx.' },
             {
+              name: 'auth-kit/preview',
+              message: "Preview mode draws inert sample screens for design tools and screenshots, never a site's sign-in; check:prod-build fails a build that bundled it.",
+            },
+            {
               name: 'auth-kit/testing/matrix-server',
               message: 'Dev-only: lib/dev/matrix.on.ts re-exports it; app code imports matrixOverrides from @/dev-matrix.',
             },
