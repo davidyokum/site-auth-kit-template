@@ -51,8 +51,10 @@ Fill in when the site is created (03 §2 Assurance: tier, pool, and account are 
    `recordChange` (or auth-kit's People actions, which log for you).
 8. **Don't weaken the walls.** No `'unsafe-inline'` scripts in the CSP, no `dangerouslySetInnerHTML`,
    no catch-all public routes, no imports of `auth-kit/dev`, `auth-kit/dev/menu`, `auth-kit/testing`
-   (or `auth-kit/testing/matrix-server`), or `lib/dev/*` from code that ships (ESLint and the unit
-   tests refuse them).
+   (or `auth-kit/testing/matrix-server`), `auth-kit/backdrops/picker`, `auth-kit/preview` (preview
+   mode's inert sample screens, auth-kit 0.1.10), or `lib/dev/*` from code that ships (ESLint and the
+   unit tests refuse them; `npm run check:prod-build` fails a build that bundled the picker or preview
+   mode).
 9. **AWS only through the preflight, and no deploys without the owner's go-ahead.** Never run an
    unqualified `aws` command. Use `npm run sandbox`, `npm run personas:seed`,
    `npm run preview:password`, which check the account in `deploy.config.json` first. Tests never
