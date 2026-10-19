@@ -9,14 +9,15 @@ import { UserPool } from 'aws-cdk-lib/aws-cognito';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { AccessRequestTable, AuditLogTable, InviteExpirySweep, RateLimitTable, ResourceAccessTable, SiteSettingsTable } from 'auth-kit/admin/cdk';
-import { CUSTOM_MESSAGE_GATE_ENV } from 'auth-kit/amplify';
+import { CUSTOM_MESSAGE_GATE_ENV, normalizeOptions } from 'auth-kit/amplify';
 import { RESOURCE_TABLE_SCHEMA } from 'auth-kit/resources';
 import { describe, expect, it, vi } from 'vitest';
 import { SsrComputeRole } from '@/amplify/compute-role';
 import { ProjectsTable } from '@/amplify/data/projects-table';
 import { PROJECTS_SCHEMA } from '@/amplify/data/projects-table.schema';
+import { deployWebAcl, OWN_WEB_ACL_RULES, userPoolWaf } from '@/amplify/web-acl';
 
-/** The compute role with each mode's tables: invite only (the default), request, or sign-up. */
+/** The compute role with each mode's tables: invite only (the default), request, or sign-up. Every site has the rate-limit table (the account-change notices). */
 function synth(context: Record<string, string> = {}, mode: 'invite' | 'request' | 'signup' = 'invite') {
   const app = new App({ context });
   const stack = new Stack(app, 'Site', { env: { account: '111122223333', region: 'us-east-1' } });
@@ -25,7 +26,7 @@ function synth(context: Record<string, string> = {}, mode: 'invite' | 'request' 
   const resourceAccess = new ResourceAccessTable(stack, 'ResourceAccess');
   const siteSettings = new SiteSettingsTable(stack, 'SiteSettings');
   const projects = new ProjectsTable(stack, 'Projects');
-  const rateLimits = mode === 'invite' ? undefined : new RateLimitTable(stack, 'RateLimits');
+  const rateLimits = new RateLimitTable(stack, 'RateLimits');
   const accessRequests = mode === 'request' ? new AccessRequestTable(stack, 'AccessRequests') : undefined;
   new SsrComputeRole(stack, 'Compute', {
     userPool: pool,
@@ -33,7 +34,7 @@ function synth(context: Record<string, string> = {}, mode: 'invite' | 'request' 
     resourceAccess,
     projects,
     siteSettings,
-    ...(rateLimits && { rateLimits }),
+    rateLimits,
     ...(accessRequests && { accessRequests }),
     selfSignUp: mode === 'signup',
     sesIdentity: 'example.com',
@@ -111,11 +112,16 @@ describe('the SSR compute role', () => {
     expect(JSON.stringify(ses[0]?.Resource)).toContain('identity/example.com');
   });
 
-  it('touches DynamoDB only with the calls the stores make: no scans or updates; deletes only on the access and settings tables', () => {
+  it('touches DynamoDB only with the calls the stores make: no scans; updates only on the counters; deletes only on the access and settings tables', () => {
     const statements = allStatements(template).filter((s) => actionsOf(s).some((a) => a.startsWith('dynamodb:')));
     const dynamo = statements.flatMap(actionsOf);
-    expect(new Set(dynamo)).toEqual(new Set(['dynamodb:GetItem', 'dynamodb:BatchGetItem', 'dynamodb:PutItem', 'dynamodb:DeleteItem', 'dynamodb:Query']));
-    for (const forbidden of ['dynamodb:Scan', 'dynamodb:UpdateItem', 'dynamodb:BatchWriteItem']) expect(dynamo).not.toContain(forbidden);
+    expect(new Set(dynamo)).toEqual(new Set(['dynamodb:GetItem', 'dynamodb:BatchGetItem', 'dynamodb:PutItem', 'dynamodb:DeleteItem', 'dynamodb:Query', 'dynamodb:UpdateItem']));
+    for (const forbidden of ['dynamodb:Scan', 'dynamodb:BatchWriteItem']) expect(dynamo).not.toContain(forbidden);
+    // UpdateItem: the rate-limit counters only (the account-change notices, on every site; register A10).
+    const updates = statements.filter((s) => actionsOf(s).includes('dynamodb:UpdateItem'));
+    expect(updates).toHaveLength(1);
+    expect(actionsOf(updates[0]!)).toEqual(['dynamodb:UpdateItem']);
+    expect(JSON.stringify(updates[0]?.Resource)).toMatch(/RateLimits/);
     // DeleteItem: removing someone's access, and clearing a Super admin's help-address override.
     const deletes = statements.filter((s) => actionsOf(s).includes('dynamodb:DeleteItem'));
     expect(deletes.length).toBeGreaterThan(0);
@@ -150,10 +156,11 @@ describe('account creation (site.config.ts accountCreation; auth-kit ADR 0023)',
     expect(allStatements(template).filter((s) => JSON.stringify(s.Resource).includes('AccessRequests'))).toEqual([]);
   });
 
-  it('amplify/backend.ts deploys each mode’s tables and jobs, the settings table always, and publishes their names', () => {
+  it('amplify/backend.ts deploys each mode’s tables and jobs, the settings and rate-limit tables always, and publishes their names', () => {
     const backend = readFileSync(join(import.meta.dirname, '..', '..', 'amplify', 'backend.ts'), 'utf8');
     expect(backend).toMatch(/new SiteSettingsTable\(data, 'SiteSettings'\)/);
-    expect(backend).toMatch(/needsRateLimits\(site\.accountCreation\) \? new RateLimitTable\(data, 'RateLimits'\)/);
+    expect(backend).toMatch(/const rateLimits = new RateLimitTable\(data, 'RateLimits'\);/);
+    expect(backend).toMatch(/rateLimitTable: rateLimits\.tableName/);
     expect(backend).toMatch(/requests \? new AccessRequestTable\(data, 'AccessRequests'\)/);
     expect(backend).toMatch(/new AccessRequestDigest\(data, 'RequestDigest'/);
     expect(backend).toMatch(/new UnverifiedAccountSweep\(data, 'UnverifiedSweep'/);
@@ -182,12 +189,12 @@ describe('the custom message trigger (every pool; auth-kit ADR 0023, 0024)', () 
     vi.unstubAllEnvs();
     void handler; // built at import from site.config.ts: a bad help address or sign-in URL would have thrown
     const { customMessageHandler } = await import('auth-kit/amplify/custom-message');
-    const make = customMessageHandler({ siteName: 'Example Site', theme: 'personal', signInUrl: 'https://www.example.com/sign-in', helpEmail: 'help@yokumlab.com', codeLifetimeMinutes: 3 });
+    const make = customMessageHandler({ siteName: 'Example Site', theme: 'personal', signInUrl: 'https://www.example.com/sign-in', helpEmail: 'help@yokum.app', codeLifetimeMinutes: 10 });
     const event = { triggerSource: 'CustomMessage_Authentication', request: { userAttributes: {}, codeParameter: '{####}' }, response: {} as { emailSubject?: string | null; emailMessage?: string | null } };
     const out = await make(event);
     expect(out.response.emailSubject).toBe('Your Example Site sign-in code');
     expect(out.response.emailMessage).toContain('{####}');
-    expect(out.response.emailMessage).toContain('Help: help@yokumlab.com.');
+    expect(out.response.emailMessage).toContain('Help: help@yokum.app.');
     await expect(make({ triggerSource: 'CustomMessage_UpdateUserAttribute', callerContext: { clientId: 'someclient' }, request: { userAttributes: {} }, response: {} })).rejects.toThrow(/refused/);
   });
 });
@@ -226,20 +233,48 @@ describe('the invite-expiry sweep (auth-kit ADR 0019)', () => {
     );
   });
 
-  it('warns the owner, as amplify/backend.ts configures it, sending only from the site’s domain', () => {
+  it('warns the owner, as amplify/backend.ts configures it, from the site’s sign-in@ mailbox with the family’s footer, sending only from its domain', () => {
     const backend = readFileSync(join(ROOT, 'amplify', 'backend.ts'), 'utf8');
-    expect(backend).toMatch(/const sender = formatSender\(senderDisplayName\(site\.name, site\.family\), site\.email\.fromAddress\)/);
-    expect(backend).toMatch(/ownerWarnings: \{\s*siteName: site\.name,\s*from: sender,/);
+    expect(backend).toMatch(/const senderAddress = senderAddressFor\(site\);\s*const sender = siteSender\(site\.name, site\.family, senderAddress\);/);
+    expect(backend).toMatch(/ownerWarnings: \{\s*siteName: site\.name,\s*family: site\.family,\s*helpEmail: help,\s*from: sender,/);
     const app = new App();
     const stack = new Stack(app, 'Site', { env: { account: '111122223333', region: 'us-east-1' } });
     new InviteExpirySweep(stack, 'InviteExpiry', {
       userPool: new UserPool(stack, 'Pool'),
       auditLog: new AuditLogTable(stack, 'AuditLog'),
-      ownerWarnings: { siteName: 'Example Site', from: 'Example Site <noreply@example.com>' },
+      ownerWarnings: { siteName: 'Example Site', family: 'personal', helpEmail: 'help@example.com', from: 'Example Site <sign-in@example.com>' },
     });
     const template = Template.fromStack(stack);
     const ses = allStatements(template).filter((st) => actionsOf(st).some((a) => a.startsWith('ses:')));
     expect(ses.flatMap(actionsOf)).toEqual(['ses:SendEmail']);
     expect(JSON.stringify(ses[0]?.Resource)).toContain('identity/example.com');
+  });
+});
+
+describe('the user pool’s web ACL (deploy.config.json webAcl; register F7, auth-kit ADR 0013)', () => {
+  const SHARED = 'arn:aws:wafv2:us-east-1:111122223333:regional/webacl/auth-kit-shared-user-pools/a7d1c55a-0000-4000-8000-000000000000';
+
+  it('reuses the account’s shared ACL, or makes the pool its own only when that’s deliberate', () => {
+    expect(userPoolWaf(SHARED)).toEqual({ webAclArn: SHARED });
+    expect(userPoolWaf('own')).toEqual({ ownWebAcl: true, signInRule: 'count', overallRule: 'block' });
+    expect(OWN_WEB_ACL_RULES).toEqual({ signInRule: 'count', overallRule: 'block' });
+  });
+
+  it('not chosen yet: sandboxes need none, and auth-kit refuses a branch deploy until it’s chosen', () => {
+    const waf = userPoolWaf(null);
+    expect(waf).toEqual({ signInRule: 'count', overallRule: 'block' });
+    expect(waf).not.toHaveProperty('ownWebAcl');
+  });
+
+  it('every choice is one the preset accepts', () => {
+    for (const webAcl of [null, 'own', SHARED]) {
+      const options = { project: 'example-site', owner: 'example-owner', tier: 2 as const, email: { fromAddress: 'sign-in@example.com', fromName: 'Example Site', family: 'personal' as const, replyTo: 'help@example.com' }, waf: userPoolWaf(webAcl) };
+      expect(normalizeOptions(options).waf.mode, String(webAcl)).toBe(webAcl === null || webAcl === 'own' ? 'create' : 'shared');
+    }
+  });
+
+  it('reads this repo’s deploy.config.json', () => {
+    const raw = JSON.parse(readFileSync(join(import.meta.dirname, '..', '..', 'deploy.config.json'), 'utf8')) as { webAcl?: string | null };
+    expect(deployWebAcl()).toBe(raw.webAcl ?? null);
   });
 });

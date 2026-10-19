@@ -6,7 +6,9 @@
  *
  * The backdrop is site.config.ts's locked choice (or, until there is one, the proposal from the
  * site's name; lib/backdrop.ts). It's decorative: hidden from assistive technology, never in the way
- * of a click, a single still frame under reduced motion, and nothing fades it around the card.
+ * of a click, a single still frame under reduced motion or on a slow device (auth-kit 0.1.9; register
+ * E6), and nothing fades it around the card (only the Plain card style's soft column, register E4). The
+ * site's name reaches the styles that draw it (Yokum magnetic's falling title).
  */
 import { Backdrop } from 'auth-kit/backdrops/react';
 import type { ReactNode } from 'react';
@@ -21,6 +23,7 @@ export function AuthScene({ children }: { children: ReactNode }) {
       seed={backdrop.seed}
       styleVersion={backdrop.styleVersion}
       family={site.family}
+      siteName={site.name}
       className="auth-scene"
       contentClassName="auth-scene-content"
     >

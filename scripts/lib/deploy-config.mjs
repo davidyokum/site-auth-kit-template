@@ -9,7 +9,10 @@ export const AMPLIFY_APP_ID_RE = /^d[a-z0-9]{13}$/;
 
 const PROFILE_RE = /^[A-Za-z0-9_.+=,@-]{1,64}$/;
 const REGION_RE = /^[a-z]{2}(?:-[a-z]+)+-\d$/;
-const KEYS = new Set(['awsProfile', 'awsAccountId', 'region', 'amplifyAppId']);
+const KEYS = new Set(['awsProfile', 'awsAccountId', 'region', 'amplifyAppId', 'webAcl']);
+
+/** A REGIONAL web ACL ARN: `arn:aws:wafv2:<region>:<account>:regional/webacl/<name>/<id>` (Cognito pools take only REGIONAL ones). */
+export const REGIONAL_WEB_ACL_ARN_RE = /^arn:aws:wafv2:([a-z]{2}(?:-[a-z]+)+-\d):(\d{12}):regional\/webacl\/[A-Za-z0-9_-]{1,128}\/[0-9a-f-]{36}$/;
 
 /**
  * Parses deploy.config.json. Throws one error listing every problem, so a misconfiguration can't
@@ -17,8 +20,14 @@ const KEYS = new Set(['awsProfile', 'awsAccountId', 'region', 'amplifyAppId']);
  *
  * `amplifyAppId` is optional: `null` (or absent) until the Amplify app exists, then its app ID. The
  * repo's hygiene test allows exactly this ID (and `awsAccountId`) and still refuses any other.
+ *
+ * `webAcl` is the user pool's WAF web ACL (register F7: one shared web ACL per account and Region):
+ * the account's shared ACL ARN (auth-kit's `createSharedAuthWebAcl`, in this config's account and
+ * Region), `"own"` for a site alone in its account (an ACL of its own, about $7 a month), or `null`
+ * (or absent) until you choose, which sandboxes accept and a branch deploy refuses
+ * (amplify/web-acl.ts).
  * @param {string} text
- * @returns {{ awsProfile: string, awsAccountId: string, region: string, amplifyAppId: string | null }}
+ * @returns {{ awsProfile: string, awsAccountId: string, region: string, amplifyAppId: string | null, webAcl: string | null }}
  */
 export function parseDeployConfig(text) {
   let raw;
@@ -30,7 +39,7 @@ export function parseDeployConfig(text) {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) throw new Error('deploy.config.json must be a JSON object.');
   const problems = [];
   for (const key of Object.keys(raw)) if (!KEYS.has(key)) problems.push(`unknown key "${key}"`);
-  const { awsProfile, awsAccountId, region, amplifyAppId = null } = raw;
+  const { awsProfile, awsAccountId, region, amplifyAppId = null, webAcl = null } = raw;
   if (typeof awsProfile !== 'string' || !PROFILE_RE.test(awsProfile)) {
     problems.push('awsProfile must name an AWS CLI profile, e.g. "personal"');
   } else if (awsProfile === 'default') {
@@ -45,8 +54,28 @@ export function parseDeployConfig(text) {
   if (amplifyAppId !== null && (typeof amplifyAppId !== 'string' || !AMPLIFY_APP_ID_RE.test(amplifyAppId))) {
     problems.push('amplifyAppId must be null or the Amplify app ID: "d" and 13 lowercase letters or digits');
   }
+  problems.push(...webAclProblems(webAcl, { awsAccountId, region }));
   if (problems.length > 0) throw new Error(`deploy.config.json:\n- ${problems.join('\n- ')}`);
-  return { awsProfile, awsAccountId, region, amplifyAppId };
+  return { awsProfile, awsAccountId, region, amplifyAppId, webAcl };
+}
+
+/**
+ * Why deploy.config.json's `webAcl` can't be used, or `[]`: null, `"own"`, or a REGIONAL web ACL ARN in
+ * the config's own account and Region (a web ACL protects resources in its own Region only).
+ * @param {unknown} webAcl
+ * @param {{ awsAccountId?: unknown, region?: unknown }} [where]
+ * @returns {string[]}
+ */
+export function webAclProblems(webAcl, where = {}) {
+  if (webAcl === null || webAcl === 'own') return [];
+  const match = typeof webAcl === 'string' ? REGIONAL_WEB_ACL_ARN_RE.exec(webAcl) : null;
+  if (!match) return ['webAcl must be null (not chosen yet; sandboxes only), "own", or the account\'s shared REGIONAL web ACL ARN (arn:aws:wafv2:<region>:<account>:regional/webacl/<name>/<id>)'];
+  const problems = [];
+  if (typeof where.region === 'string' && match[1] !== where.region) problems.push(`webAcl is in ${match[1]}, but the site deploys to ${where.region}: a web ACL protects resources in its own Region only`);
+  if (typeof where.awsAccountId === 'string' && /^\d{12}$/.test(where.awsAccountId) && where.awsAccountId !== PLACEHOLDER_ACCOUNT_ID && match[2] !== where.awsAccountId) {
+    problems.push(`webAcl belongs to account ${match[2]}, but the site deploys to ${where.awsAccountId}`);
+  }
+  return problems;
 }
 
 /**

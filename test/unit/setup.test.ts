@@ -12,11 +12,12 @@ import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import { siteConfigProblems, type CheckedSite } from '@/lib/site-checks';
 import { applyAnswers, applyPersonaDomain, checkAnswers, describeAnswers, replaceConfigLine, slugify, tsString } from '@/scripts/lib/setup-config.mjs';
-import { FAMILY_HELP_MAILBOX, FAMILY_NAMES_OWNER, SITE_FAMILIES } from '@/site.families';
+import { FAMILY_HELP_MAILBOX, FAMILY_NAMES_OWNER, FAMILY_SENDER, SITE_FAMILIES } from '@/site.families';
 
 const ROOT = join(import.meta.dirname, '..', '..');
-const context = { familyHelpMailbox: FAMILY_HELP_MAILBOX, families: SITE_FAMILIES, namesOwner: FAMILY_NAMES_OWNER };
-const good = { name: 'Budget Reports', family: 'personal', help: 'help@yokumlab.com', mode: 'invite', ownerEmail: 'Owner@Example.org' };
+const context = { familyHelpMailbox: FAMILY_HELP_MAILBOX, familySender: FAMILY_SENDER, families: SITE_FAMILIES, namesOwner: FAMILY_NAMES_OWNER };
+const good = { name: 'Budget Reports', family: 'personal', help: 'help@yokum.app', mode: 'invite', ownerEmail: 'Owner@Example.org' };
+const work = { ...good, family: 'unc', sender: 'sign-in@reports.example.org', help: 'reports-help@example.org' };
 
 /** Loads a site.config.ts text the way the scripts do (TypeScript's transpiler, then import). */
 async function load(text: string): Promise<{ site: CheckedSite & Record<string, unknown> }> {
@@ -33,11 +34,37 @@ async function load(text: string): Promise<{ site: CheckedSite & Record<string, 
 }
 
 describe('the answers (checkAnswers)', () => {
-  it('normalizes them: a slug from the name, lowercase addresses, the family’s own mailbox written as null', () => {
+  it('normalizes them: a slug from the name, lowercase addresses, the family’s own sender and mailbox written as null', () => {
     const { answers, problems } = checkAnswers(good, context);
     expect(problems).toEqual([]);
-    expect(answers).toMatchObject({ name: 'Budget Reports', project: 'budget-reports', family: 'personal', replyTo: null, help: 'help@yokumlab.com', ownerEmail: 'owner@example.org', ownerName: null });
+    expect(answers).toMatchObject({
+      name: 'Budget Reports',
+      project: 'budget-reports',
+      family: 'personal',
+      fromAddress: null,
+      sender: 'sign-in@yokum.app',
+      replyTo: null,
+      help: 'help@yokum.app',
+      helpPersonal: false,
+      ownerEmail: 'owner@example.org',
+      ownerName: null,
+    });
     expect(checkAnswers({ ...good, help: 'Reports-Help@Example.org' }, context).answers.replyTo).toBe('reports-help@example.org');
+    expect(checkAnswers({ ...good, sender: 'Sign-In@Reports.Example.org' }, context).answers.fromAddress).toBe('sign-in@reports.example.org');
+  });
+
+  it('asks a work site for its own sender, and refuses one that isn’t a reply-able sign-in@ mailbox (register A10)', () => {
+    expect(checkAnswers({ ...work, sender: undefined }, context).problems.join(' ')).toMatch(/Sender: the unc family has no shared sender/);
+    expect(checkAnswers(work, context).problems).toEqual([]);
+    expect(checkAnswers({ ...good, sender: 'noreply@example.org' }, context).problems.join(' ')).toMatch(/can't be replied to/);
+    expect(checkAnswers({ ...good, sender: 'reports@example.org' }, context).problems.join(' ')).toMatch(/sign-in@ mailbox/);
+  });
+
+  it('takes a person’s own help address only when acknowledged, and writes the acknowledgement (register E4c)', () => {
+    expect(checkAnswers({ ...good, help: 'jordan.lee@example.org' }, context).problems.join(' ')).toMatch(/person's own address/);
+    const { answers, problems } = checkAnswers({ ...good, help: 'Jordan.Lee@Example.org', helpPersonal: true }, context);
+    expect(problems).toEqual([]);
+    expect(answers).toMatchObject({ replyTo: { address: 'jordan.lee@example.org', personal: true }, help: 'jordan.lee@example.org', helpPersonal: true });
   });
 
   it('refuses what auth-kit would refuse later: no help mailbox, a placeholder or personal one, an unknown family or mode', () => {
@@ -48,6 +75,7 @@ describe('the answers (checkAnswers)', () => {
     expect(checkAnswers({ ...good, mode: 'anyone' }, context).problems.join(' ')).toMatch(/mode must be one of/);
     expect(checkAnswers({ ...good, ownerEmail: 'not an address' }, context).problems.join(' ')).toMatch(/owner's email/);
     expect(checkAnswers({ ...good, name: 'Line\nbreak' }, context).problems.join(' ')).toMatch(/line breaks/);
+    expect(checkAnswers({ ...good, name: 'Café Reports' }, context).problems.join(' ')).toMatch(/plain ASCII/);
   });
 
   it('asks a sign-up site for its domains and privacy notice', () => {
@@ -60,7 +88,7 @@ describe('the answers (checkAnswers)', () => {
 
   it('keeps the owner’s name only for families whose help screens name owners', () => {
     expect(checkAnswers({ ...good, ownerName: 'Jordan Lee' }, context).answers.ownerName).toBeNull();
-    expect(checkAnswers({ ...good, family: 'unc', help: 'reports-help@example.org', ownerName: 'Jordan Lee' }, context).answers.ownerName).toBe('Jordan Lee');
+    expect(checkAnswers({ ...work, ownerName: 'Jordan Lee' }, context).answers.ownerName).toBe('Jordan Lee');
   });
 });
 
@@ -86,7 +114,9 @@ describe('writing site.config.ts (applyAnswers)', () => {
       email: { fromAddress: original.email.fromAddress, replyTo: null },
       backdrop: original.backdrop,
     });
-    expect(siteConfigProblems(site)).toEqual([]);
+    // The one thing left is the site web ACL a sign-up site needs (register D3): it has to exist in AWS
+    // first, so setup names it as a next step instead of asking.
+    expect(siteConfigProblems(site)).toEqual([expect.stringMatching(/^site\.config\.ts siteWaf: a sign-up site \('domains'\)/)]);
     // Everything else is untouched: the same number of lines.
     expect(written.split('\n').length).toBe(template.split('\n').length);
   });
@@ -96,6 +126,15 @@ describe('writing site.config.ts (applyAnswers)', () => {
     const once = applyAnswers(template, answers);
     expect(applyAnswers(once, answers)).toBe(once);
     expect((await load(once)).site.email).toMatchObject({ replyTo: 'reports-help@example.org' });
+  });
+
+  it('writes a work site’s own sender, and an acknowledged personal help address, as configs the site accepts', async () => {
+    const own = await load(applyAnswers(template, checkAnswers(work, context).answers));
+    expect(own.site.email).toEqual({ fromAddress: 'sign-in@reports.example.org', replyTo: 'reports-help@example.org' });
+    expect(siteConfigProblems(own.site)).toEqual([]);
+    const personal = await load(applyAnswers(template, checkAnswers({ ...good, help: 'jordan.lee@example.org', helpPersonal: true }, context).answers));
+    expect(personal.site.email).toEqual({ fromAddress: null, replyTo: { address: 'jordan.lee@example.org', personal: true } });
+    expect(siteConfigProblems(personal.site)).toEqual([]);
   });
 
   it('refuses a file whose setup line isn’t in the one-line form, instead of guessing', () => {
@@ -109,7 +148,7 @@ describe('writing site.config.ts (applyAnswers)', () => {
 
   it('never writes a secret: no password, key, token, or account ID among the answers it writes', () => {
     const { answers } = checkAnswers(good, context);
-    expect(Object.keys(answers).sort()).toEqual(['accountCreation', 'family', 'help', 'name', 'ownerEmail', 'ownerName', 'privacyNoticeUrl', 'project', 'replyTo']);
+    expect(Object.keys(answers).sort()).toEqual(['accountCreation', 'family', 'fromAddress', 'help', 'helpPersonal', 'name', 'ownerEmail', 'ownerName', 'privacyNoticeUrl', 'project', 'replyTo', 'sender']);
     expect(describeAnswers(answers).join('\n')).not.toMatch(/password|secret|token|\d{12}/i);
   });
 });

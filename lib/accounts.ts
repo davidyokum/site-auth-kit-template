@@ -10,6 +10,10 @@
  *   them (lib/account-modes.ts). Same answer for every address, rate limits, at least 800 ms.
  * - `selfService()`: on sign-up sites, members change their own email and delete their own account.
  * - `accessRequests()`: the request queue (request sites), for the People page's "Pending requests".
+ * - `accountNotices()`: the account-change notice route on every site (register A10, on by default):
+ *   after a new passkey or a changed password, the screens ask it to email "A passkey was added to your
+ *   account" or "Your password was changed" to the account's own address
+ *   (app/api/auth-kit/account-notice/route.ts).
  *
  * Each is made on first use, not at import: building them needs the public origin, which a
  * production build doesn't have until it runs on its branch, and the tables from amplify_outputs.json.
@@ -19,7 +23,9 @@ import 'server-only';
 import {
   type AccessRequestStore,
   type AccountCreationRoutes,
+  type AccountNoticeRoute,
   createAccountCreationRoutes,
+  createAccountNoticeRoute,
   createDynamoAccessRequestStore,
   createDynamoRateLimitStore,
   createDynamoSiteSettingsStore,
@@ -41,8 +47,8 @@ import type { EmailSender } from 'auth-kit/admin';
 import { after } from 'next/server';
 import { matrixOverrides } from '@/dev-matrix';
 import { site } from '@/site.config';
-import { helpAddressFor } from '@/site.families';
-import { needsRateLimits, takesRequests, takesSignUps } from './account-modes';
+import { helpSettingFor } from '@/site.families';
+import { hasAccountCreationRoutes, takesRequests } from './account-modes';
 import { auditLog } from './audit-log';
 import { auth } from './auth';
 import { createSiteMailer, type SiteMailer } from './email';
@@ -72,7 +78,7 @@ export function signInHelp(): SignInHelp {
   if (matrix) store = matrix.shared('site-settings', createMemorySiteSettingsStore);
   else if (outputs.custom?.siteSettingsTable) store = createDynamoSiteSettingsStore({ tableName: outputs.custom.siteSettingsTable, region: outputs.auth.aws_region });
   else store = missingSettingsStore(tableMissing('siteSettingsTable', 'site settings'));
-  return (help = createSignInHelp({ configured: helpAddressFor(site), theme: site.family, store, onError: report('sign-in help setting') }));
+  return (help = createSignInHelp({ configured: helpSettingFor(site), theme: siteTheme(site), store, onError: report('sign-in help setting') }));
 }
 
 /** For pages: the address in effect, or the configured one if the setting couldn't be read. */
@@ -110,6 +116,7 @@ export function signInHelpActions(): SignInHelpActions {
 
 let rateLimitStore: RateLimitStore | undefined;
 
+/** The counters (every site has the table: the account-change notices use it). */
 function rateLimits(): RateLimitStore {
   if (rateLimitStore) return rateLimitStore;
   const matrix = matrixOverrides();
@@ -118,6 +125,13 @@ function rateLimits(): RateLimitStore {
   if (!tableName) throw new Error(tableMissing('rateLimitTable', 'rate-limit'));
   return (rateLimitStore = createDynamoRateLimitStore({ tableName, region: outputs.auth.aws_region }));
 }
+
+/**
+ * The counters, resolved on each use: building the self-service actions or the notice route never
+ * fails over a missing table; the call that needs it does, with the reason (and the notice route
+ * answers "couldn't send" and reports it).
+ */
+const countersOnUse: RateLimitStore = { hit: (key, rule, now) => rateLimits().hit(key, rule, now) };
 
 let requestStore: AccessRequestStore | undefined;
 
@@ -145,7 +159,7 @@ let routes: AccountCreationRoutes | undefined;
 /** The sign-up and request routes. Only sites that take sign-ups or requests have them (their route files exist only there). */
 export function accountRoutes(): AccountCreationRoutes {
   if (routes) return routes;
-  if (!needsRateLimits(site.accountCreation)) throw new Error(`site.config.ts: accountCreation mode '${site.accountCreation.mode}' has no sign-up or request routes.`);
+  if (!hasAccountCreationRoutes(site.accountCreation)) throw new Error(`site.config.ts: accountCreation mode '${site.accountCreation.mode}' has no sign-up or request routes.`);
   const matrix = matrixOverrides();
   const requests = accessRequests();
   const origin = expectedOrigin();
@@ -190,8 +204,8 @@ export function selfService(): SelfServiceActions {
     theme: siteTheme(site),
     help: signInHelp(),
     mailer: accountMailer(),
-    // Only sign-up sites offer these (and have the table); elsewhere the actions refuse before counting.
-    rateLimits: takesSignUps(site.accountCreation) ? rateLimits() : { hit: () => Promise.reject(new Error('This site takes no sign-ups.')) },
+    // Only sign-up sites offer these; elsewhere the actions refuse before counting.
+    rateLimits: countersOnUse,
     // Their roles on projects go before the account does.
     removeResourceMemberships: (person) => resourceActions().removeResourceMemberships(person),
     itemsNote: 'Your roles on projects are removed; the projects themselves stay with their other Managers.',
@@ -199,4 +213,33 @@ export function selfService(): SelfServiceActions {
     onError: (error, context) => report(context)(error),
   });
   return self;
+}
+
+let notices: AccountNoticeRoute | undefined;
+
+/**
+ * The account-change notice route (auth-kit `createAccountNoticeRoute`; register A10). It answers only
+ * same-origin JSON posts from a signed-in account (the first-credential chooser included), emails only
+ * that account's own address (read from Cognito, never from the request), checks a passkey notice
+ * against the account's passkeys, and is limited per account. A notice is a courtesy to the account's
+ * owner, not a detection control. Under the auth matrix the notice is accepted and dropped: the matrix
+ * checks who may ask for one, and sends nothing.
+ */
+export function accountNotices(): AccountNoticeRoute {
+  if (notices) return notices;
+  const matrix = matrixOverrides();
+  const origin = expectedOrigin();
+  notices = createAccountNoticeRoute({
+    auth,
+    siteName: site.name,
+    signInUrl: `${publicOrigin()}/sign-in`,
+    theme: siteTheme(site),
+    help: signInHelp(),
+    mailer: matrix ? { sendEmail: () => Promise.resolve() } : accountMailer(),
+    rateLimits: countersOnUse,
+    ...(origin !== undefined && { allowedOrigins: [origin] }),
+    ...(matrix && { cognito: matrix.peopleCognito }),
+    onError: (error, context) => report(context)(error),
+  });
+  return notices;
 }

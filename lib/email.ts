@@ -3,13 +3,13 @@
  * lib/admin.ts), a project Manager's invite and the admins' alert about it (lib/resource-actions.ts),
  * the account-creation and self-service notices (lib/accounts.ts), and change alerts (lib/alerts.ts).
  *
- * Emails match the sign-in card (auth-kit ADR 0024; register E4a): no letterhead, the family's
- * sender name ("{Site} (UNC)" on a work site, or the site's name on personal sites), the help address as
- * Reply-To, and a footer that repeats the card's identity sentence, then "Help: {address}."
- * (personal sites: the help line alone). auth-kit's invite and account emails are built that way;
- * its plain alerts (Super admin granted, ownership moved, a Manager's invite, the unused owner
- * invite, a changed help address) are re-laid in the same layout here, so every email the site
- * sends looks like one family.
+ * Emails match the sign-in card (auth-kit ADR 0024; register E4a): no letterhead, the site's reply-able
+ * `sign-in@` mailbox under the family's sender name ("{Site} (UNC)" on a work site, or the site's name
+ * on personal sites; register A10), the help address as Reply-To, and a footer that repeats the card's
+ * identity sentence, then "Help: {address}." (personal sites: the help line alone). Since auth-kit
+ * 0.1.9 every email its mailer sends is built that way, its alerts included (Super admin granted,
+ * ownership moved, a Manager's invite, the unused owner invite, a changed help address); the site's
+ * own grant and removal alerts (lib/alerts.ts) use the same layout through `inCardLayout`.
  *
  * The help address is the one in effect when each email goes out: the configured one, or a Super
  * admin's override (`createSignInHelp`, lib/accounts.ts). Cognito's code emails come from the custom
@@ -29,48 +29,27 @@ import {
   type ResourceInviteNotifier,
   renderEmail,
   renderInviteEmail,
-  renderOwnerInviteWarningEmail,
-  renderOwnershipTransferEmail,
-  renderResourceInviteAlertEmail,
-  renderSignInHelpChangedEmail,
-  renderSuperadminGrantEmail,
 } from 'auth-kit/admin';
 import { helpAddressOf, type SignInHelpSource } from 'auth-kit/accounts';
-import { type AuthTheme, senderDisplayName } from 'auth-kit/themes';
+import { type AuthTheme, siteSender } from 'auth-kit/themes';
 import { site as configuredSite } from '@/site.config';
-import type { FamilySite } from '@/site.families';
-import { siteTheme } from './theme';
+import { type FamilySite, senderAddressFor } from '@/site.families';
+import { type ThemeSite, siteTheme } from './theme';
 
 /** What these helpers read from site.config.ts (tests pass their own). */
-export interface MailSite extends FamilySite {
-  readonly emailHint?: string | null;
-  readonly email: { readonly fromAddress: string; readonly replyTo?: string | null };
-}
-
-/** Letters, digits, spaces, and the other characters RFC 5322 allows unquoted in a display name. */
-const PLAIN_DISPLAY_NAME = /^[A-Za-z0-9!#$%&'*+\-/=?^_`{|}~ ]+$/;
+export type MailSite = ThemeSite & FamilySite;
 
 /**
- * The From header for SES: `Name <address>`. The name is the family's sender name, quoted when it has
- * characters RFC 5322 treats specially (the parentheses in "Example Site (UNC)" would otherwise read
- * as a comment), and MIME-encoded when it isn't ASCII, as SES requires.
+ * The From header: the site's `sign-in@` mailbox (its own, else its family's) under the family's
+ * sender name, quoted when it has characters RFC 5322 treats specially (the parentheses in "Example
+ * Site (UNC)" would otherwise read as a comment). auth-kit's `siteSender` builds it and refuses a
+ * `noreply@` or any other local part (register A10). The site name is plain ASCII
+ * (lib/site-checks.ts), because auth-kit checks the display name literally and SES would need a
+ * non-ASCII one MIME-encoded.
  */
 export function senderMailbox(site: MailSite = configuredSite): string {
-  const name = senderDisplayName(site.name, site.family);
-  const address = site.email.fromAddress.trim();
-  if (/[\r\n]/.test(name)) throw new Error('site.config.ts: the site name may not contain line breaks.');
-  if (!/^[^\s<>"@]+@[^\s<>"@]+\.[^\s<>"@]+$/.test(address)) throw new Error(`site.config.ts: email.fromAddress "${address}" isn't an address.`);
-  let display: string;
-  if (PLAIN_DISPLAY_NAME.test(name)) {
-    display = name;
-  } else if (/^[\x20-\x7e]+$/.test(name)) {
-    display = `"${name.replace(/["\\]/g, '\\$&')}"`;
-  } else {
-    let binary = '';
-    for (const byte of new TextEncoder().encode(name)) binary += String.fromCharCode(byte);
-    display = `=?UTF-8?B?${btoa(binary)}?=`;
-  }
-  return `${display} <${address}>`;
+  if (/[\r\n]/.test(site.name)) throw new Error('site.config.ts: the site name may not contain line breaks.');
+  return siteSender(site.name, site.family, senderAddressFor(site));
 }
 
 /**
@@ -106,9 +85,9 @@ export type SiteMailer = InviteMailer & Required<OwnerAlertNotifier> & OwnerInvi
 /**
  * Invites (the People page's, an approved request's, and a project Manager's), the owner's alerts, the
  * warning about the owner's unused invite, the admins' alert about a Manager's invite, a changed help
- * address, and any already-rendered email (`sendEmail`: account-creation and self-service notices):
- * auth-kit's SES mailer, from this site's sender, with the help address in effect as Reply-To (an
- * invite replies to whoever sent it) and the card's footer.
+ * address, and any already-rendered email (`sendEmail`: the account-change notices, and the
+ * account-creation and self-service emails): auth-kit's SES mailer, from this site's sender, with the
+ * help address in effect as Reply-To (an invite replies to whoever sent it) and the card's footer.
  */
 export function createSiteMailer(options: SiteMailerOptions, site: MailSite = configuredSite): SiteMailer {
   const theme: AuthTheme = siteTheme(site);
@@ -117,23 +96,15 @@ export function createSiteMailer(options: SiteMailerOptions, site: MailSite = co
   let client = options.client;
   const mailer = async () => {
     const helpEmail = await helpAddressOf(options.help);
-    const layout: EmailSite = { siteName: site.name, theme, signInUrl: options.signInUrl, helpEmail };
-    const card =
-      <T,>(render: (input: T) => RenderedEmail) =>
-      (input: T) =>
-        inCardLayout(render(input), layout);
     client ??= new SESv2Client({ region: options.region });
     return createSesInviteMailer({
       from,
       client,
       replyTo: [helpEmail],
+      // The site, for the alerts' layout and footer (auth-kit lays each one out like the card).
+      site: { siteName: site.name, theme, help: helpEmail, signInUrl: options.signInUrl },
       // People actions pass the theme and help address; a Manager's invite (auth-kit/resources) doesn't.
       render: (input) => renderInviteEmail({ ...input, theme: input.theme ?? theme, helpEmail: input.helpEmail ?? helpEmail }),
-      renderSuperadminGrant: card(renderSuperadminGrantEmail),
-      renderOwnershipTransfer: card(renderOwnershipTransferEmail),
-      renderOwnerInviteWarning: card(renderOwnerInviteWarningEmail),
-      renderResourceInvite: card(renderResourceInviteAlertEmail),
-      renderSignInHelpChanged: card(renderSignInHelpChangedEmail),
     });
   };
   return {

@@ -15,7 +15,7 @@ vi.mock('@/site.config', async (importOriginal) => {
       name: 'Example Site',
       family: 'personal',
       alertEmails: ['security@example.com'],
-      email: { fromAddress: 'noreply@example.com', replyTo: 'help@example.com' },
+      email: { fromAddress: 'sign-in@example.com', replyTo: 'help@example.com' },
     },
   };
 });
@@ -84,7 +84,7 @@ describe('sending the alert (lib/alerts.ts → the site’s mailer → SES)', ()
     const calls = ses.commandCalls(SendEmailCommand);
     expect(calls).toHaveLength(1);
     const input = calls[0]!.args[0].input;
-    expect(input.FromEmailAddress).toBe('Example Site <noreply@example.com>');
+    expect(input.FromEmailAddress).toBe('Example Site <sign-in@example.com>');
     expect(input.ReplyToAddresses).toEqual(['help@example.com']);
     expect(input.Destination?.ToAddresses).toEqual(['security@example.com']);
     expect(input.Content?.Simple?.Subject?.Data).toContain('disable');

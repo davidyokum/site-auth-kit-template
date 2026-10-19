@@ -4,21 +4,25 @@
  * auth-kit checks the same things again where they're used (the preset at synthesis, the screens when
  * they render, the routes when they start); this says it first, in one list, naming the fix.
  *
- * - a help address: the site's own or its family's, role-based (auth-kit refuses a placeholder or a
- *   person's own address);
+ * - a sender: the site's `sign-in@` mailbox or its family's, under a plain-ASCII site name (auth-kit
+ *   refuses `noreply@` or any other local part, register A10, and checks the display name literally);
+ * - a help address: the site's own or its family's, role-based (auth-kit refuses a placeholder, and a
+ *   person's own address unless it's acknowledged with `{ address, personal: true }`, register E4c);
+ * - a known card style (register E5);
  * - a known account-creation mode, with a domain list in 'domains' mode;
- * - sign-up sites ('domains', 'open'): a privacy notice;
- * - 'open' sites: the site web ACL and its JavaScript integration (`siteWaf`);
+ * - sign-up sites ('domains', 'open'): a privacy notice, and the site web ACL with its JavaScript
+ *   integration (`siteWaf`; every sign-up gets the silent WAF check, register D3);
  * - links that are site paths or https URLs, and a code lifetime Cognito accepts.
  *
  * No path aliases: next.config.ts imports it.
  */
-import { helpAddressProblems } from 'auth-kit/themes';
+import { CARD_STYLES, type CardStyle, helpSettingProblems, senderProblems, siteSender } from 'auth-kit/themes';
 import type { SiteWaf } from '../site.config';
-import { type FamilySite, helpAddressFor } from '../site.families';
+import { type FamilySite, helpSettingFor, senderAddressFor } from '../site.families';
 import { type AccountCreationLike, takesSignUps } from './account-modes';
 
 export interface CheckedSite extends FamilySite {
+  readonly cardStyle?: CardStyle;
   readonly accountCreation: AccountCreationLike;
   readonly codeLifetimeMinutes: number;
   readonly privacyNoticeUrl: string | null;
@@ -44,13 +48,27 @@ function linkProblem(value: string | null, key: string): string | null {
 /** Every problem with the site's config, or `[]`. */
 export function siteConfigProblems(site: CheckedSite): string[] {
   const problems: string[] = [];
-  let help: string | null = null;
-  try {
-    help = helpAddressFor(site);
-  } catch (error) {
-    problems.push(error instanceof Error ? error.message : String(error));
+  const message = (error: unknown) => (error instanceof Error ? error.message.replace(/^auth-kit: /, '') : String(error));
+
+  if (!/^[\x20-\x7e]+$/.test(site.name)) {
+    problems.push(`site.config.ts name "${site.name}": use plain ASCII letters, digits, and punctuation. It's the email sender's name, which auth-kit checks literally and SES would need MIME-encoded.`);
+  } else {
+    try {
+      for (const p of senderProblems(siteSender(site.name, site.family, senderAddressFor(site)), { siteName: site.name, theme: site.family })) problems.push(`site.config.ts email.fromAddress (the sender): ${p}`);
+    } catch (error) {
+      problems.push(message(error).startsWith('site.config.ts') ? message(error) : `site.config.ts email.fromAddress (the sender): ${message(error)}`);
+    }
   }
-  if (help !== null) for (const p of helpAddressProblems(help)) problems.push(`site.config.ts email.replyTo (the help address): ${p}`);
+
+  try {
+    for (const p of helpSettingProblems(helpSettingFor(site))) problems.push(`site.config.ts email.replyTo (the help address): ${p}`);
+  } catch (error) {
+    problems.push(message(error));
+  }
+
+  if (site.cardStyle !== undefined && !CARD_STYLES.includes(site.cardStyle)) {
+    problems.push(`site.config.ts cardStyle must be one of ${CARD_STYLES.map((s) => `'${s}'`).join(', ')} (got ${JSON.stringify(site.cardStyle)}).`);
+  }
 
   const { mode, domains, requestsAlso } = site.accountCreation;
   if (!['invite', 'request', 'domains', 'open'].includes(mode)) {
@@ -63,8 +81,10 @@ export function siteConfigProblems(site: CheckedSite): string[] {
   if (takesSignUps(site.accountCreation) && site.privacyNoticeUrl === null) {
     problems.push(`site.config.ts privacyNoticeUrl: a sign-up site ('${mode}') links its privacy notice from the sign-up screen (register D4). Set it to a site path or an https URL.`);
   }
-  if (mode === 'open' && site.siteWaf === null) {
-    problems.push("site.config.ts siteWaf: open sign-up needs the site web ACL in front of the sign-up route, and its JavaScript integration (README, \"Account creation\").");
+  if (takesSignUps(site.accountCreation) && site.siteWaf === null) {
+    problems.push(
+      `site.config.ts siteWaf: a sign-up site ('${mode}') needs the site web ACL in front of the sign-up route, and its JavaScript integration: every sign-up gets the silent WAF check (register D3; README, "Account creation").`,
+    );
   }
   if (site.siteWaf !== null) {
     if (!SITE_WEB_ACL_ARN.test(site.siteWaf.webAclArn)) problems.push(`site.config.ts siteWaf.webAclArn "${site.siteWaf.webAclArn}" isn't a CLOUDFRONT web ACL ARN (arn:aws:wafv2:us-east-1:<account>:global/webacl/<name>/<id>).`);

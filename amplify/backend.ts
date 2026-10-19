@@ -4,9 +4,11 @@
  *
  * What it deploys follows site.config.ts: every site gets the pool (with its custom message trigger),
  * the audit log, the invite-expiry schedule, the resource access table, the site settings table, the
- * sample projects table, and the SSR compute role. Sites that take sign-ups or requests
- * (`accountCreation`; lib/account-modes.ts) also get the tables and jobs auth-kit's account creation
- * needs (ADR 0023).
+ * rate-limit table (the account-change notices are limited per account; sign-up and request routes
+ * use it too), the sample projects table, and the SSR compute role. Sites that take sign-ups or
+ * requests (`accountCreation`; lib/account-modes.ts) also get the jobs and tables auth-kit's account
+ * creation needs (ADR 0023): the 24-hour sweep of never-verified sign-ups (required on sign-up sites,
+ * register D3), the request queue, and its daily digest.
  */
 import { defineBackend } from '@aws-amplify/backend';
 import {
@@ -19,12 +21,12 @@ import {
   SiteSettingsTable,
   UnverifiedAccountSweep,
 } from 'auth-kit/admin/cdk';
-import { applyAuthStandard, formatSender } from 'auth-kit/amplify';
-import { senderDisplayName } from 'auth-kit/themes';
-import { needsRateLimits, takesRequests, takesSignUps } from '../lib/account-modes';
+import { applyAuthStandard } from 'auth-kit/amplify';
+import { siteSender } from 'auth-kit/themes';
+import { takesRequests, takesSignUps } from '../lib/account-modes';
 import { backendOrigin } from '../lib/origin';
 import { site } from '../site.config';
-import { helpAddressFor } from '../site.families';
+import { helpSettingFor, senderAddressFor } from '../site.families';
 import { auth, authOptions } from './auth/resource';
 import { SsrComputeRole } from './compute-role';
 import { ProjectsTable } from './data/projects-table';
@@ -35,14 +37,18 @@ const backend = defineBackend({ auth });
 
 // What defineAuth can't express: admin-create-only (Cognito's own sign-up stays off), deletion
 // protection, token lifetimes, the sign-in session (the emailed code's lifetime), the password
-// policy, passkeys counting as MFA, SES from a domain identity, the WAF web ACL (its per-rule modes are
-// `waf` in amplify/auth/resource.ts), and tags. It also checks the custom message trigger is wired and
-// is auth-kit's. Sandboxes get the sandbox variant automatically.
+// policy, passkeys counting as MFA, SES from a domain identity, the WAF web ACL (deploy.config.json
+// `webAcl`; amplify/web-acl.ts), and tags. It also checks the custom message trigger is wired and is
+// auth-kit's, and that a sign-up site deploys the unverified-account sweep (below). Sandboxes get the
+// sandbox variant automatically.
 applyAuthStandard(backend.auth, authOptions);
 
 const sandbox = backend.stack.node.tryGetContext('amplify-backend-type') === 'sandbox';
 const origin = backendOrigin();
-const sender = formatSender(senderDisplayName(site.name, site.family), site.email.fromAddress);
+// The site's sign-in@ mailbox under the family's name ("{Site} (UNC)"), checked by auth-kit.
+const senderAddress = senderAddressFor(site);
+const sender = siteSender(site.name, site.family, senderAddress);
+const help = helpSettingFor(site);
 const data = backend.createStack('site-data');
 
 // The append-only audit log for people and content changes (auth-kit ADR 0010): deletion
@@ -63,6 +69,8 @@ new InviteExpirySweep(data, 'InviteExpiry', {
   // once a day, from the site's sender. The function may send only from that address's domain.
   ownerWarnings: {
     siteName: site.name,
+    family: site.family,
+    helpEmail: help,
     from: sender,
     ...(origin.startsWith('https://') && { signInUrl: `${origin}/sign-in` }),
     ...(site.alertEmails[0] !== undefined && { fallbackEmail: site.alertEmails[0] }),
@@ -87,14 +95,17 @@ const resourceAccess = new ResourceAccessTable(data, 'ResourceAccess');
 // retained; every change is also in the audit log, and the owner is emailed.
 const siteSettings = new SiteSettingsTable(data, 'SiteSettings');
 
+// Counters, on every site: the account-change notices ("A passkey was added to your account", "Your
+// password was changed"; register A10, on by default) are limited per account, and on sites that take
+// them, the sign-up and request routes per address, per IP, and site-wide (and members' email
+// changes). Addresses, IPs, and account IDs are stored only as hashes, each counter gone an hour
+// after its window.
+const rateLimits = new RateLimitTable(data, 'RateLimits');
+
 // ---- Account creation (site.config.ts `accountCreation`; auth-kit ADR 0023) --------------------
 // Invite-only sites deploy none of this.
 const signUps = takesSignUps(site.accountCreation);
 const requests = takesRequests(site.accountCreation);
-
-// Per-address and per-IP counters for the sign-up and request routes (and members' email changes):
-// addresses and IPs stored only as hashes, each counter gone an hour after its window.
-const rateLimits = needsRateLimits(site.accountCreation) ? new RateLimitTable(data, 'RateLimits') : undefined;
 
 // The request queue: requests wait here, never as Cognito users, and each one, with its typed name
 // and reason, is deleted 30 days after it's settled. No point-in-time recovery, so backups don't
@@ -114,13 +125,14 @@ if (accessRequests && !sandbox) {
     from: sender,
     signInUrl: `${origin}/sign-in`,
     peopleUrl: `${origin}/admin/people`,
-    helpEmail: helpAddressFor(site),
+    helpEmail: help,
   });
 }
 
 if (signUps) {
   // Sign-ups whose address is never verified are deleted after 24 hours (only accounts the sign-up
-  // route marked; never one with a role, never the owner, never an admin's invite).
+  // route marked; never one with a role, never the owner, never an admin's invite). Required on a
+  // sign-up site: applyAuthStandard fails synthesis without it (register D3).
   new UnverifiedAccountSweep(data, 'UnverifiedSweep', { userPool: backend.auth.resources.userPool, auditLog });
 }
 
@@ -133,10 +145,10 @@ const compute = new SsrComputeRole(data, 'SsrCompute', {
   resourceAccess,
   projects,
   siteSettings,
-  ...(rateLimits && { rateLimits }),
+  rateLimits,
   ...(accessRequests && { accessRequests }),
   selfSignUp: signUps,
-  sesIdentity: site.email.fromAddress.slice(site.email.fromAddress.lastIndexOf('@') + 1),
+  sesIdentity: senderAddress.slice(senderAddress.lastIndexOf('@') + 1),
 });
 
 backend.addOutput({
@@ -144,7 +156,7 @@ backend.addOutput({
     auditLogTable: auditLog.tableName,
     resourceAccessTable: resourceAccess.tableName,
     siteSettingsTable: siteSettings.tableName,
-    ...(rateLimits && { rateLimitTable: rateLimits.tableName }),
+    rateLimitTable: rateLimits.tableName,
     ...(accessRequests && { accessRequestTable: accessRequests.tableName }),
     projectsTable: projects.tableName,
     computeRoleArn: compute.role.roleArn,
