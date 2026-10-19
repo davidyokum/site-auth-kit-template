@@ -149,11 +149,11 @@ describe('dev-only code stays out of what ships', () => {
     .filter((f) => /\.(ts|tsx)$/.test(f))
     .filter((f) => !/\.dev\.tsx?$/.test(f) && !f.startsWith('lib/dev/'));
 
-  it('only dev-only files import auth-kit/dev, auth-kit/dev/menu, auth-kit/testing, the backdrop picker, or lib/dev/*', () => {
+  it('only dev-only files import auth-kit/dev, auth-kit/dev/menu, auth-kit/testing, the backdrop picker, preview mode, or lib/dev/*', () => {
     for (const file of shipped) {
       const imports = [...source(file).matchAll(/from\s+['"]([^'"]+)['"]/g)].map((m) => m[1]);
       for (const spec of imports) {
-        expect(spec, `${file} imports ${spec}`).not.toMatch(/^auth-kit\/(dev|testing|backdrops\/picker)(\/|$)|^@\/lib\/dev\//);
+        expect(spec, `${file} imports ${spec}`).not.toMatch(/^auth-kit\/(dev|testing|backdrops\/picker|preview)(\/|$)|^@\/lib\/dev\//);
       }
     }
   });
