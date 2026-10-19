@@ -4,7 +4,8 @@
 // What setup asks, and where each answer goes (site.config.ts unless noted):
 //   site name              name, project (a slug of it), and personas.json's .test domain
 //   family                 family (one of site.families.ts's)
-//   sender                 email.fromAddress (null when it's the family's shared sender)
+//   sender                 email.fromAddress (null when it's the family's shared sender; asked only
+//                          where the family has none: personal sites send from sign-in@yokum.app)
 //   help mailbox           email.replyTo (null when it's the family's own mailbox; a person's own
 //                          address only acknowledged, { address, personal: true }: register E4c)
 //   account creation       accountCreation (+ privacyNoticeUrl on sign-up sites)
@@ -64,7 +65,6 @@ export function checkAnswers(raw, context) {
   const name = String(raw.name ?? '').trim();
   if (!name) problems.push('The site needs a name.');
   else if (/[\r\n<>"\\]/.test(name)) problems.push('The site name may not contain line breaks, < > ", or a backslash (it becomes the email sender name).');
-  else if (!/^[\x20-\x7e]+$/.test(name)) problems.push('The site name must be plain ASCII letters, digits, and punctuation (it becomes the email sender name, which auth-kit checks literally).');
   const project = slugify(name);
   if (name && !project) problems.push('The site name needs at least one letter or digit (it becomes the project slug).');
 
@@ -74,7 +74,8 @@ export function checkAnswers(raw, context) {
   const familySender = FAMILIES.includes(family) ? (context.familySender?.[family] ?? null) : null;
   const sender = String(raw.sender ?? familySender ?? '').trim().toLowerCase();
   if (!sender) problems.push(`Sender: ${FAMILIES.includes(family) ? `the ${family} family has no shared sender, so give` : 'give'} this site's sign-in@ mailbox on a domain verified in SES (e.g. sign-in@reports.example.org).`);
-  else for (const p of senderAddressProblems(sender)) problems.push(`Sender: ${p}`);
+  // A family with a shared sender sends only from it (personal: sign-in@yokum.app, register F11).
+  else for (const p of senderAddressProblems(sender, FAMILIES.includes(family) ? family : undefined)) problems.push(`Sender: ${p}`);
 
   const familyMailbox = FAMILIES.includes(family) ? (context.familyHelpMailbox[family] ?? null) : null;
   const help = String(raw.help ?? familyMailbox ?? '').trim().toLowerCase();

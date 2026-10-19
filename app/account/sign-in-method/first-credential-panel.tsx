@@ -7,8 +7,8 @@
  * Like `SignIn`'s own chooser step, it asks for the account-change notice once the first passkey or
  * password is saved ("A passkey was added to your account", "Your password was changed"; register A10),
  * at auth-kit's `ACCOUNT_NOTICE_PATH` (app/api/auth-kit/account-notice). A notice that can't be sent
- * never holds the person up. (auth-kit keeps its passkey hint to itself, so a passkey made here opens
- * "How do you want to sign in?" once; the first passkey sign-in then sets the hint, register A5a.)
+ * never holds the person up. With `accountName`, auth-kit also sets its passkey hint when a passkey is
+ * made here, so this browser's next Continue opens the passkey prompt (register A5a).
  */
 import { ACCOUNT_NOTICE_PATH, AuthCard, ChooseFirstCredential, sendAccountNotice } from 'auth-kit/client';
 import { siteTheme } from '@/lib/theme';

@@ -4,8 +4,8 @@
  * auth-kit checks the same things again where they're used (the preset at synthesis, the screens when
  * they render, the routes when they start); this says it first, in one list, naming the fix.
  *
- * - a sender: the site's `sign-in@` mailbox or its family's, under a plain-ASCII site name (auth-kit
- *   refuses `noreply@` or any other local part, register A10, and checks the display name literally);
+ * - a sender: the site's `sign-in@` mailbox, or its family's (auth-kit refuses `noreply@` or any other
+ *   local part, register A10, and on personal sites any address but sign-in@yokum.app, register F11);
  * - a help address: the site's own or its family's, role-based (auth-kit refuses a placeholder, and a
  *   person's own address unless it's acknowledged with `{ address, personal: true }`, register E4c);
  * - a known card style (register E5);
@@ -50,14 +50,10 @@ export function siteConfigProblems(site: CheckedSite): string[] {
   const problems: string[] = [];
   const message = (error: unknown) => (error instanceof Error ? error.message.replace(/^auth-kit: /, '') : String(error));
 
-  if (!/^[\x20-\x7e]+$/.test(site.name)) {
-    problems.push(`site.config.ts name "${site.name}": use plain ASCII letters, digits, and punctuation. It's the email sender's name, which auth-kit checks literally and SES would need MIME-encoded.`);
-  } else {
-    try {
-      for (const p of senderProblems(siteSender(site.name, site.family, senderAddressFor(site)), { siteName: site.name, theme: site.family })) problems.push(`site.config.ts email.fromAddress (the sender): ${p}`);
-    } catch (error) {
-      problems.push(message(error).startsWith('site.config.ts') ? message(error) : `site.config.ts email.fromAddress (the sender): ${message(error)}`);
-    }
+  try {
+    for (const p of senderProblems(siteSender(site.name, site.family, senderAddressFor(site)), { siteName: site.name, theme: site.family })) problems.push(`site.config.ts email.fromAddress (the sender): ${p}`);
+  } catch (error) {
+    problems.push(message(error).startsWith('site.config.ts') ? message(error) : `site.config.ts email.fromAddress (the sender): ${message(error)}`);
   }
 
   try {

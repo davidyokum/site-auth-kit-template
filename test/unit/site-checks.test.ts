@@ -34,15 +34,18 @@ describe('site.config.ts checks (lib/site-checks.ts)', () => {
     expect(siteConfigProblems({ ...work, email: { ...work.email, replyTo: 'reports-help@example.org' } })).toEqual([]);
   });
 
-  it('need a reply-able sign-in@ sender: the site’s own, or its family’s (register A10)', () => {
-    expect(siteConfigProblems({ ...base, family: 'unc', email: { replyTo: 'reports-help@example.org' } }).join(' ')).toMatch(/needs a sender[\s\S]*email\.fromAddress/);
-    expect(siteConfigProblems({ ...base, email: { fromAddress: 'noreply@example.org' } }).join(' ')).toMatch(/can't be replied to/);
-    expect(siteConfigProblems({ ...base, email: { fromAddress: 'reports@example.org' } }).join(' ')).toMatch(/sign-in@ mailbox/);
-    expect(siteConfigProblems({ ...base, email: { fromAddress: 'Sign-In@Reports.Example.org' } })).toEqual([]);
+  it('need a reply-able sign-in@ sender: the site’s own, or its family’s; personal sites only sign-in@yokum.app (register A10, F11)', () => {
+    const work = { ...base, family: 'unc' as const, email: { replyTo: 'reports-help@example.org' } };
+    expect(siteConfigProblems(work).join(' ')).toMatch(/needs a sender[\s\S]*email\.fromAddress/);
+    expect(siteConfigProblems({ ...work, email: { ...work.email, fromAddress: 'noreply@example.org' } }).join(' ')).toMatch(/can't be replied to/);
+    expect(siteConfigProblems({ ...work, email: { ...work.email, fromAddress: 'reports@example.org' } }).join(' ')).toMatch(/sign-in@ mailbox/);
+    expect(siteConfigProblems({ ...work, email: { ...work.email, fromAddress: 'Sign-In@Reports.Example.org' } })).toEqual([]);
+    expect(siteConfigProblems({ ...base, email: { fromAddress: 'sign-in@reports.example.org' } }).join(' ')).toMatch(/Personal family's sender/);
+    expect(siteConfigProblems({ ...base, email: { fromAddress: 'sign-in@yokum.app' } })).toEqual([]);
   });
 
-  it('need a plain-ASCII site name (the sender’s name, which auth-kit checks literally) and a known card style (register E5)', () => {
-    expect(siteConfigProblems({ ...base, name: 'Café Reports' }).join(' ')).toMatch(/plain ASCII/);
+  it('take a site name outside ASCII (auth-kit encodes it for SES) and need a known card style (register E5)', () => {
+    expect(siteConfigProblems({ ...base, name: 'Café Reports' })).toEqual([]);
     for (const cardStyle of ['quiet', 'monogram', 'frosted', 'plain', 'porcelain'] as const) expect(siteConfigProblems({ ...base, cardStyle })).toEqual([]);
     expect(siteConfigProblems({ ...base, cardStyle: 'glossy' as never }).join(' ')).toMatch(/cardStyle must be one of/);
   });

@@ -171,10 +171,11 @@ const SETTINGS_PAGE: Expect = { ...ADMIN_PAGE, adminView: 404, adminContent: 404
 /**
  * The account-change notice route (register A10; every site): any signed-in account may ask for a
  * notice about its own account, including one that has just chosen its first credential (the chooser
- * page asks right after). Under the matrix the notice is accepted and dropped (lib/accounts.ts), so a
- * 200 means "allowed to ask".
+ * page asks right after) and a password user who hasn't set up the authenticator yet (My account asks
+ * before that step; auth-kit 0.1.9-alpha.2). Under the matrix the notice is accepted and dropped
+ * (lib/accounts.ts), so a 200 means "allowed to ask".
  */
-const NOTICE_ROUTE: Expect = { ...SIGNED_IN_API, codeOnlyMember: 200 };
+const NOTICE_ROUTE: Expect = { ...SIGNED_IN_API, codeOnlyMember: 200, noAuthenticator: 200 };
 
 /**
  * The account-creation routes (public on purpose): the same answer for every address and every

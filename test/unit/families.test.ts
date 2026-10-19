@@ -62,8 +62,8 @@ describe('the sender (register A10, F11)', () => {
     expect(senderAddressFor(make('personal'))).toBe('sign-in@yokum.app');
   });
 
-  it('takes a site’s own sender over the family’s, lowercased', () => {
-    expect(senderAddressFor(make('personal', null, ' Sign-In@Reports.Example.org '))).toBe('sign-in@reports.example.org');
+  it('takes a work site’s own sender, lowercased (a personal site may only use the family’s: lib/site-checks.ts)', () => {
+    expect(senderAddressFor(make('unc', 'reports-help@example.org', ' Sign-In@Reports.Example.org '))).toBe('sign-in@reports.example.org');
   });
 
   it('refuses a work site with no sender of its own while its family has none, naming the fix', () => {

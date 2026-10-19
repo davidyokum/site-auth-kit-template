@@ -83,14 +83,15 @@ Fill in when the site is created (03 §2 Assurance: tier, pool, and account are 
     `authKitStyles`. Words come from auth-kit's copy deck (Oxford commas).
 17. **Every email matches the card.** Send through the site's mailer (`lib/accounts.ts`
     `accountMailer()`, `lib/email.ts`): the site's reply-able `sign-in@` mailbox (never `noreply@`;
-    register A10) under the family's sender name, the help address as Reply-To, the card's layout and
+    register A10; personal sites only sign-in@yokum.app, F11) under the family's sender name, the help address as Reply-To, the card's layout and
     footer. The custom message trigger (`amplify/auth/custom-message/`) is a security control: keep
     `customMessageHandler` (or wrap your wording in `withAuthKitCustomMessage`) and its
     `CUSTOM_MESSAGE_GATE_ENV`.
 18. **Account-change notices stay on.** auth-kit's screens post to `/api/auth-kit/account-notice`
     after a new passkey or password (register A10); the route (`accountNotices()` in lib/accounts.ts)
-    checks the session itself and emails only the account's own address. Don't pass `notices={false}`,
-    and keep the rate-limit table on every site (the route counts there).
+    checks the session itself and emails only the account's own address. `SignIn` gets
+    `notices={{ mounted: true }}`; don't pass `notices={false}`, and keep the rate-limit table on every
+    site (the route counts there).
 19. **One shared web ACL per account** (register F7). The user pool's WAF comes from
     `deploy.config.json` `webAcl` (amplify/web-acl.ts): the account's shared ACL, or `"own"` only when
     the owner says the site is alone in its account. Sign-up sites also need `siteWaf` (register D3).

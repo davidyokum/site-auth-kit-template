@@ -10,8 +10,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createSiteMailer, inCardLayout, type MailSite, senderMailbox } from '@/lib/email';
 import { site } from '@/site.config';
 
-const personal: MailSite = { name: 'Example Site', family: 'personal', email: { fromAddress: 'sign-in@example.com', replyTo: 'help@example.com' } };
-const unc: MailSite = { ...personal, family: 'unc' };
+const personal: MailSite = { name: 'Example Site', family: 'personal', email: { fromAddress: null, replyTo: 'help@example.com' } };
+const unc: MailSite = { ...personal, family: 'unc', email: { fromAddress: 'sign-in@example.com', replyTo: 'help@example.com' } };
 const signInUrl = 'https://www.example.com/sign-in';
 
 function fakeSes() {
@@ -24,20 +24,21 @@ const textOf = (input: SendEmailCommandInput | undefined) => input?.Content?.Sim
 const htmlOf = (input: SendEmailCommandInput | undefined) => input?.Content?.Simple?.Body?.Html?.Data ?? '';
 
 describe('the sender', () => {
-  it('is the site’s sign-in@ mailbox under the family’s display name, quoted when RFC 5322 needs it (register A10, E4a)', () => {
-    expect(senderMailbox(personal)).toBe('Example Site <sign-in@example.com>');
+  it('is the site’s sign-in@ mailbox under the family’s display name, quoted when RFC 5322 needs it, encoded when it isn’t ASCII (register A10, E4a)', () => {
     expect(senderMailbox(unc)).toBe('"Example Site (UNC)" <sign-in@example.com>');
+    expect(senderMailbox({ ...unc, name: 'Café Reports' })).toBe(`=?UTF-8?B?${Buffer.from('Café Reports (UNC)').toString('base64')}?= <sign-in@example.com>`);
     expect(() => senderMailbox({ ...personal, name: 'Two\nlines' })).toThrow(/line breaks/);
   });
 
-  it('is the family’s shared sender when the site has none of its own (personal sites: sign-in@yokum.app)', () => {
-    expect(senderMailbox({ ...personal, email: { fromAddress: null, replyTo: null } })).toBe('Example Site <sign-in@yokum.app>');
+  it('is the family’s shared sender when the site has none of its own, and personal sites send only from it (register F11)', () => {
+    expect(senderMailbox(personal)).toBe('Example Site <sign-in@yokum.app>');
+    expect(() => senderMailbox({ ...personal, email: { fromAddress: 'sign-in@example.com' } })).toThrow(/Personal family's sender/);
     expect(() => senderMailbox({ ...unc, email: { fromAddress: null, replyTo: 'help@example.com' } })).toThrow(/needs a sender[\s\S]*email\.fromAddress/);
   });
 
   it('refuses a sender that can’t be replied to, or isn’t the sign-in@ mailbox (auth-kit refuses both everywhere)', () => {
-    expect(() => senderMailbox({ ...personal, email: { fromAddress: 'noreply@example.com' } })).toThrow(/can't be replied to/);
-    expect(() => senderMailbox({ ...personal, email: { fromAddress: 'reports@example.com' } })).toThrow(/sign-in@ mailbox/);
+    expect(() => senderMailbox({ ...unc, email: { fromAddress: 'noreply@example.com' } })).toThrow(/can't be replied to/);
+    expect(() => senderMailbox({ ...unc, email: { fromAddress: 'reports@example.com' } })).toThrow(/sign-in@ mailbox/);
   });
 
   it('defaults to this site’s config', () => {
@@ -106,7 +107,7 @@ describe('the site’s mailer (createSiteMailer)', () => {
       at: expiresAt,
     });
     const [input] = ses.sent;
-    expect(input?.FromEmailAddress).toBe('Example Site <sign-in@example.com>');
+    expect(input?.FromEmailAddress).toBe('Example Site <sign-in@yokum.app>');
     expect(input?.ReplyToAddresses).toEqual(['help@example.com']);
     expect(input?.Destination?.ToAddresses).toEqual(['owner@example.com']);
     expect(textOf(input)).toMatch(/a Super admin of Example Site[\s\S]*\n\nHelp: help@example\.com\.$/);
@@ -153,7 +154,7 @@ describe('the site’s mailer (createSiteMailer)', () => {
       to: ['someone@example.com'],
       email: { subject: 'Hi', text: 'Body', html: '<p>Body</p>' },
     });
-    expect(ses.sent[0]?.FromEmailAddress).toBe('Example Site <sign-in@example.com>');
+    expect(ses.sent[0]?.FromEmailAddress).toBe('Example Site <sign-in@yokum.app>');
     expect(ses.sent[0]?.ReplyToAddresses).toEqual(['help@example.com']);
     expect(textOf(ses.sent[0])).toBe('Body');
   });

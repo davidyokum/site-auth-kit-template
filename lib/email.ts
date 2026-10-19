@@ -42,10 +42,9 @@ export type MailSite = ThemeSite & FamilySite;
 /**
  * The From header: the site's `sign-in@` mailbox (its own, else its family's) under the family's
  * sender name, quoted when it has characters RFC 5322 treats specially (the parentheses in "Example
- * Site (UNC)" would otherwise read as a comment). auth-kit's `siteSender` builds it and refuses a
- * `noreply@` or any other local part (register A10). The site name is plain ASCII
- * (lib/site-checks.ts), because auth-kit checks the display name literally and SES would need a
- * non-ASCII one MIME-encoded.
+ * Site (UNC)" would otherwise read as a comment), and written as RFC 2047 encoded-words when it isn't
+ * ASCII, as SES requires. auth-kit's `siteSender` builds it and refuses a `noreply@` or any other local
+ * part (register A10), and on personal sites any address but sign-in@yokum.app (register F11).
  */
 export function senderMailbox(site: MailSite = configuredSite): string {
   if (/[\r\n]/.test(site.name)) throw new Error('site.config.ts: the site name may not contain line breaks.');

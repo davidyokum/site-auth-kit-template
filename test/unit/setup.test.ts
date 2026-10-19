@@ -50,14 +50,16 @@ describe('the answers (checkAnswers)', () => {
       ownerName: null,
     });
     expect(checkAnswers({ ...good, help: 'Reports-Help@Example.org' }, context).answers.replyTo).toBe('reports-help@example.org');
-    expect(checkAnswers({ ...good, sender: 'Sign-In@Reports.Example.org' }, context).answers.fromAddress).toBe('sign-in@reports.example.org');
+    expect(checkAnswers({ ...work, sender: 'Sign-In@Reports.Example.org' }, context).answers.fromAddress).toBe('sign-in@reports.example.org');
   });
 
   it('asks a work site for its own sender, and refuses one that isn’t a reply-able sign-in@ mailbox (register A10)', () => {
     expect(checkAnswers({ ...work, sender: undefined }, context).problems.join(' ')).toMatch(/Sender: the unc family has no shared sender/);
     expect(checkAnswers(work, context).problems).toEqual([]);
-    expect(checkAnswers({ ...good, sender: 'noreply@example.org' }, context).problems.join(' ')).toMatch(/can't be replied to/);
-    expect(checkAnswers({ ...good, sender: 'reports@example.org' }, context).problems.join(' ')).toMatch(/sign-in@ mailbox/);
+    expect(checkAnswers({ ...work, sender: 'noreply@example.org' }, context).problems.join(' ')).toMatch(/can't be replied to/);
+    expect(checkAnswers({ ...work, sender: 'reports@example.org' }, context).problems.join(' ')).toMatch(/sign-in@ mailbox/);
+    // A personal site sends only from the family's (register F11).
+    expect(checkAnswers({ ...good, sender: 'sign-in@reports.example.org' }, context).problems.join(' ')).toMatch(/Personal family's sender/);
   });
 
   it('takes a person’s own help address only when acknowledged, and writes the acknowledgement (register E4c)', () => {
@@ -75,7 +77,6 @@ describe('the answers (checkAnswers)', () => {
     expect(checkAnswers({ ...good, mode: 'anyone' }, context).problems.join(' ')).toMatch(/mode must be one of/);
     expect(checkAnswers({ ...good, ownerEmail: 'not an address' }, context).problems.join(' ')).toMatch(/owner's email/);
     expect(checkAnswers({ ...good, name: 'Line\nbreak' }, context).problems.join(' ')).toMatch(/line breaks/);
-    expect(checkAnswers({ ...good, name: 'Café Reports' }, context).problems.join(' ')).toMatch(/plain ASCII/);
   });
 
   it('asks a sign-up site for its domains and privacy notice', () => {

@@ -267,12 +267,12 @@ describe('the invite-expiry sweep (auth-kit ADR 0019)', () => {
     new InviteExpirySweep(stack, 'InviteExpiry', {
       userPool: new UserPool(stack, 'Pool'),
       auditLog: new AuditLogTable(stack, 'AuditLog'),
-      ownerWarnings: { siteName: 'Example Site', family: 'personal', helpEmail: 'help@example.com', from: 'Example Site <sign-in@example.com>' },
+      ownerWarnings: { siteName: 'Example Site', family: 'personal', helpEmail: 'help@example.com', from: 'Example Site <sign-in@yokum.app>' },
     });
     const template = Template.fromStack(stack);
     const ses = allStatements(template).filter((st) => actionsOf(st).some((a) => a.startsWith('ses:')));
     expect(ses.flatMap(actionsOf)).toEqual(['ses:SendEmail']);
-    expect(JSON.stringify(ses[0]?.Resource)).toContain('identity/example.com');
+    expect(JSON.stringify(ses[0]?.Resource)).toContain('identity/yokum.app');
   });
 });
 
@@ -293,7 +293,7 @@ describe('the user pool’s web ACL (deploy.config.json webAcl; register F7, aut
 
   it('every choice is one the preset accepts', () => {
     for (const webAcl of [null, 'own', SHARED]) {
-      const options = { project: 'example-site', owner: 'example-owner', tier: 2 as const, email: { fromAddress: 'sign-in@example.com', fromName: 'Example Site', family: 'personal' as const, replyTo: 'help@example.com' }, waf: userPoolWaf(webAcl) };
+      const options = { project: 'example-site', owner: 'example-owner', tier: 2 as const, email: { fromAddress: 'sign-in@yokum.app', fromName: 'Example Site', family: 'personal' as const, replyTo: 'help@example.com' }, waf: userPoolWaf(webAcl) };
       expect(normalizeOptions(options).waf.mode, String(webAcl)).toBe(webAcl === null || webAcl === 'own' ? 'create' : 'shared');
     }
   });

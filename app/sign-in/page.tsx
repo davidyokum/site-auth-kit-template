@@ -35,6 +35,9 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
         {...(passkey && { passkey })}
         accountCreation={site.accountCreation}
         codeLifetimeMinutes={site.codeLifetimeMinutes}
+        // The account-change notice route is mounted (app/api/auth-kit/account-notice), so "Forgot your
+        // password?" may promise "We'll email you a note when your password changes." (register A10).
+        notices={{ mounted: true }}
         next={typeof next === 'string' ? next : null}
         reauth={reauth === '1'}
       />

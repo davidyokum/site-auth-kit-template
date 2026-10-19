@@ -9,8 +9,10 @@
 // never asks for or writes a secret (every answer is public: it reaches the browser or AWS tags).
 //
 // Non-interactive (scripts, CI): pass every answer and --yes, e.g.
-//   npm run setup -- --name "Budget Reports" --family personal --sender sign-in@yokum.app \
-//     --help help@yokum.app --mode invite --owner-email owner@example.org --yes
+//   npm run setup -- --name "Budget Reports" --family personal --help help@yokum.app \
+//     --mode invite --owner-email owner@example.org --yes
+// A work-family site adds --sender sign-in@<its verified domain> (personal sites send from
+// sign-in@yokum.app, the family's).
 // Domains mode adds --domains example.org,example.com [--requests-also] and --privacy /privacy.
 // A person's own help address (register E4c: a site that's deliberately one person) needs
 // --help-personal.
@@ -77,13 +79,19 @@ try {
   const family = await askUntil(`Family (${FAMILIES.join(', ')})`, String(current.family), flags.family, (v) => (FAMILIES.includes(v.trim().toLowerCase()) ? null : `One of ${FAMILIES.join(', ')}.`));
   const fam = family.trim().toLowerCase();
   const probe = { name, family: fam, mode: 'invite', ownerEmail: 'owner@example.org' };
+  // A family with a shared sender sends only from it (personal: sign-in@yokum.app, register F11), so
+  // the question is asked only where the family has none.
   const currentSender = current.email?.fromAddress ?? familySender[fam] ?? '';
-  const sender = await askUntil(
-    `Sender: the sign-in@ mailbox auth email comes from, on a domain verified in SES${familySender[fam] ? ` (the ${fam} family's is ${familySender[fam]})` : ''}`,
-    String(currentSender),
-    flags.sender,
-    (v) => checkAnswers({ ...probe, sender: v || ' ' }, context).problems.find((p) => p.startsWith('Sender')) ?? null,
-  );
+  const senderProblem = (v) => checkAnswers({ ...probe, sender: v || ' ' }, context).problems.find((p) => p.startsWith('Sender')) ?? null;
+  let sender;
+  if (familySender[fam]) {
+    sender = flags.sender ?? familySender[fam];
+    const problem = senderProblem(sender);
+    if (problem) throw new Error(problem);
+    console.log(`Sender: ${sender} (the ${fam} family's)`);
+  } else {
+    sender = await askUntil('Sender: the sign-in@ mailbox auth email comes from, on a domain verified in SES', String(currentSender), flags.sender, senderProblem);
+  }
   const replyTo = current.email?.replyTo;
   const currentHelp = (replyTo !== null && typeof replyTo === 'object' ? replyTo.address : replyTo) ?? familyHelpMailbox[fam] ?? '';
   let helpPersonal = flags['help-personal'] ?? (replyTo !== null && typeof replyTo === 'object' && replyTo.personal === true);
