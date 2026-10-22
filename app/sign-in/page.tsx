@@ -5,7 +5,8 @@
  * help screens; the line saying how this site gives out accounts (`accountCreation`); and the family's
  * footer. It handles every step these pools return, then sends a password user without an
  * authenticator to set one up, requires the first credential after an invite or a sign-up, and
- * returns through `safeRedirect` (same-site paths only). `?reauth=1` is step-up.
+ * returns through `safeRedirect` (same-site paths only). `?reauth=1` is step-up; `?first=1` (an
+ * invite's link) is a first visit, so the card leads with "Email me a code".
  *
  * The help address is read here, on the server, on every request, so a Super admin's override
  * (Admin → Settings → "Sign-in help") shows at once. The card sits on the site's backdrop.
@@ -21,8 +22,8 @@ import { site } from '@/site.config';
 export const metadata: Metadata = { title: 'Sign in' };
 export const dynamic = 'force-dynamic';
 
-export default async function SignInPage({ searchParams }: { searchParams: Promise<{ next?: string | string[]; reauth?: string }> }) {
-  const { next, reauth } = await searchParams;
+export default async function SignInPage({ searchParams }: { searchParams: Promise<{ next?: string | string[]; reauth?: string; first?: string }> }) {
+  const { next, reauth, first } = await searchParams;
   const help = await effectiveHelp();
   const passkey = passkeyPrompt();
   return (
@@ -40,6 +41,8 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
         notices={{ mounted: true }}
         next={typeof next === 'string' ? next : null}
         reauth={reauth === '1'}
+        // An invite's link adds ?first=1, so the card leads with "Email me a code" (auth-kit 0.1.12).
+        firstVisit={first === '1'}
       />
     </AuthScene>
   );
