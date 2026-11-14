@@ -28,15 +28,16 @@
     "personas:seed": "node scripts/preflight.mjs --pass-account --exec auth-kit seed-personas",
     "projects:seed": "node scripts/seed-sample-project.mjs",
     "backdrop:pick": "node scripts/backdrop-pick.mjs",
-    "backdrop:lock": "node scripts/backdrop-lock.mjs",
-    "preview:password": "node scripts/preview-password.mjs"
+    "backdrop:set": "node scripts/backdrop-set.mjs",
+    "preview:password": "node scripts/preview-password.mjs",
+    "deploy": "node scripts/deploy.mjs"
   },
   "dependencies": {
     "@aws-amplify/adapter-nextjs": "^1.8.1",
     "@aws-sdk/client-dynamodb": "^3.1152.0",
     "@aws-sdk/client-sesv2": "^3.1152.0",
     "@aws-sdk/lib-dynamodb": "^3.1152.0",
-    "auth-kit": "https://github.com/davidyokum/auth-kit/releases/download/v0.1.12-alpha.1/auth-kit-0.1.12-alpha.1.tgz",
+    "auth-kit": "https://github.com/davidyokum/auth-kit/releases/download/v0.1.16-alpha.2/auth-kit-0.1.16-alpha.2.tgz",
     "aws-amplify": "^6.22.2",
     "next": "16.4.2",
     "react": "19.3.1",

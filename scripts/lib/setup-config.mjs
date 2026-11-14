@@ -11,7 +11,14 @@
 //   account creation       accountCreation (+ privacyNoticeUrl on sign-up sites)
 //   owner's email          ownerEmail, alertEmails, and inviteDomains (its domain) while that's the template's
 //   owner's name           ownerName (work families only: their help screens name the owner)
+//   the site's address     passkeys ({ relyingPartyId: <address> }): the final address, before anyone
+//                          signs in, so passkeys work from the first sign-in (auth-kit ADR 0028)
+//   the backdrop           backdrop ({ …, locked: true, chosen: 'owner' }), when the owner named one;
+//                          otherwise they choose it in the picker (npm run backdrop:pick) after setup
 //
+// The site's name, its address, its backdrop, how people get an account, and the owner are the
+// OWNER's decisions (OWNER_DECISIONS). Run by an agent (--yes), setup writes nothing until every one
+// is given and --owner-chose says the owner gave them; otherwise it prints the questions to ask.
 // Not asked: the card style (site.config.ts `cardStyle`, Quiet by default; register E5), the code
 // lifetime (10 minutes, register A7), and the site web ACL a sign-up site needs (`siteWaf`: it has to
 // exist in AWS first, so setup names it as a next step).
@@ -19,6 +26,45 @@
 // Every value is public (it reaches the browser or AWS tags). Setup never asks for, or writes, a
 // password, a key, a token, or an AWS account ID.
 import { helpAddressProblems, senderAddressProblems } from 'auth-kit/themes';
+import { formatBackdrop, parseChoice, replaceBackdrop } from './backdrop-config.mjs';
+
+/** The answers that are the site owner's to give, with the flag each takes. */
+export const OWNER_DECISIONS = [
+  { key: 'name', flag: '--name', question: 'What is the site called? (It names the sign-in card, its emails, and the site.)' },
+  { key: 'address', flag: '--address', question: 'What is its address? (For a personal site, <name>.yokum.app is the default. Passkeys are bound to it, so it is chosen now, before anyone signs in.)' },
+  { key: 'backdrop', flag: '--backdrop', question: 'Which backdrop goes behind the sign-in card? (Show them the picker’s nine variations, from npm run backdrop:pick or its screenshots; they pick one, and its style:seed:version goes here.)' },
+  { key: 'mode', flag: '--mode', question: 'How do people get an account: invite only, request (anyone asks, an admin approves), domains (listed domains sign up), or open?' },
+  { key: 'ownerEmail', flag: '--owner-email', question: 'Whose email is the owner’s? (They get the first-visit invite once the site is live.)' },
+];
+
+/**
+ * The questions still open: the owner decisions with no answer. Ask them on one card, then run setup
+ * again with every answer and --owner-chose.
+ * @param {Record<string, unknown>} given
+ */
+export function openOwnerQuestions(given) {
+  return OWNER_DECISIONS.filter((d) => given[d.key] === undefined || given[d.key] === null || String(given[d.key]).trim() === '');
+}
+
+const HOST_RE = /^(?=.{4,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/;
+
+/**
+ * The site's address as passkeys need it: a host name, never an amplifyapp.com address (a branch's
+ * default address changes per branch and isn't the site's).
+ * @param {string} value
+ * @returns {string | null} the problem, or null
+ */
+export function addressProblem(value) {
+  const v = String(value ?? '').trim().toLowerCase();
+  if (!HOST_RE.test(v)) return `"${value}" isn't a host name such as reports.example.org (no https://, no path).`;
+  if (v.endsWith('.amplifyapp.com')) return 'Use the site’s own address, not an amplifyapp.com one: passkeys are bound to it, and each branch has its own amplifyapp.com address.';
+  return null;
+}
+
+/** A personal site's default address: <slug>.yokum.app. Work families have none. */
+export function defaultAddress(family, project) {
+  return family === 'personal' && project ? `${project}.yokum.app` : '';
+}
 
 export const MODES = ['invite', 'request', 'domains', 'open'];
 
@@ -108,6 +154,21 @@ export function checkAnswers(raw, context) {
   const ownerName = context.namesOwner[family] === true && raw.ownerName ? String(raw.ownerName).trim() || null : null;
   if (ownerName !== null && /[\r\n<>"\\]/.test(ownerName)) problems.push("The owner's name may not contain line breaks, < > \", or a backslash.");
 
+  // The address and the backdrop are optional here (setup.mjs decides when they're required).
+  const address = raw.address === undefined || raw.address === null || String(raw.address).trim() === '' ? null : String(raw.address).trim().toLowerCase();
+  if (address !== null) {
+    const problem = addressProblem(address);
+    if (problem) problems.push(`Address: ${problem}`);
+  }
+  let backdrop = null;
+  if (raw.backdrop !== undefined && raw.backdrop !== null && String(raw.backdrop).trim() !== '') {
+    try {
+      backdrop = parseChoice(String(raw.backdrop));
+    } catch (error) {
+      problems.push(`Backdrop: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
   return {
     problems,
     answers: {
@@ -124,6 +185,8 @@ export function checkAnswers(raw, context) {
       privacyNoticeUrl: privacy,
       ownerEmail,
       ownerName,
+      address,
+      backdrop,
     },
   };
 }
@@ -175,6 +238,8 @@ export function applyAnswers(text, a) {
   out = replaceConfigLine(out, '  ', 'alertEmails', `[${tsString(a.ownerEmail)}]`, ' as readonly string[]');
   // The template's placeholder invite domain becomes the owner's; a site that set its own keeps it.
   if (/^ {2}inviteDomains: \['example\.com'\],$/m.test(out)) out = replaceConfigLine(out, '  ', 'inviteDomains', `[${tsString(domain)}]`);
+  if (a.address) out = replaceConfigLine(out, '  ', 'passkeys', `{ relyingPartyId: ${tsString(a.address)} }`, ' as false | { relyingPartyId: string }');
+  if (a.backdrop) out = replaceBackdrop(out, a.backdrop).source;
   return out;
 }
 
@@ -197,5 +262,7 @@ export function describeAnswers(a) {
     `  accounts          ${mode}`,
     ...(a.privacyNoticeUrl !== null ? [`  privacy notice    ${a.privacyNoticeUrl}`] : []),
     `  owner             ${a.ownerEmail}${a.ownerName ? ` (${a.ownerName})` : ''}`,
+    ...(a.address ? [`  address           ${a.address}  (passkeys are bound to it)`] : []),
+    ...(a.backdrop ? [`  backdrop          ${formatBackdrop(a.backdrop)}`] : []),
   ];
 }

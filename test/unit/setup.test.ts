@@ -11,7 +11,7 @@ import { parsePersonas } from 'auth-kit/dev';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import { siteConfigProblems, type CheckedSite } from '@/lib/site-checks';
-import { applyAnswers, applyPersonaDomain, checkAnswers, describeAnswers, replaceConfigLine, slugify, tsString } from '@/scripts/lib/setup-config.mjs';
+import { addressProblem, applyAnswers, applyPersonaDomain, checkAnswers, defaultAddress, describeAnswers, OWNER_DECISIONS, openOwnerQuestions, replaceConfigLine, slugify, tsString } from '@/scripts/lib/setup-config.mjs';
 import { FAMILY_HELP_MAILBOX, FAMILY_NAMES_OWNER, FAMILY_SENDER, SITE_FAMILIES } from '@/site.families';
 
 const ROOT = join(import.meta.dirname, '..', '..');
@@ -150,7 +150,7 @@ describe('writing site.config.ts (applyAnswers)', () => {
 
   it('never writes a secret: no password, key, token, or account ID among the answers it writes', () => {
     const { answers } = checkAnswers(good, context);
-    expect(Object.keys(answers).sort()).toEqual(['accountCreation', 'family', 'fromAddress', 'help', 'helpPersonal', 'name', 'ownerEmail', 'ownerName', 'privacyNoticeUrl', 'project', 'replyTo', 'sender']);
+    expect(Object.keys(answers).sort()).toEqual(['accountCreation', 'address', 'backdrop', 'family', 'fromAddress', 'help', 'helpPersonal', 'name', 'ownerEmail', 'ownerName', 'privacyNoticeUrl', 'project', 'replyTo', 'sender']);
     expect(describeAnswers(answers).join('\n')).not.toMatch(/password|secret|token|\d{12}/i);
   });
 });
@@ -161,5 +161,39 @@ describe('personas.json (applyPersonaDomain)', () => {
     const personas = JSON.parse(text) as { email: string }[];
     for (const p of personas) expect(p.email).toMatch(/@budget-reports\.test$/);
     expect(parsePersonas(personas).length).toBe(personas.length);
+  });
+});
+
+describe('the owner’s decisions (auth-kit ADR 0028)', () => {
+  it('are the name, the address, the backdrop, how people get an account, and the owner', () => {
+    expect(OWNER_DECISIONS.map((d) => d.key)).toEqual(['name', 'address', 'backdrop', 'mode', 'ownerEmail']);
+    expect(openOwnerQuestions({ name: 'Budget Reports', mode: 'invite', ownerEmail: 'o@example.org' }).map((d) => d.flag)).toEqual(['--address', '--backdrop']);
+    expect(openOwnerQuestions({ name: 'x', address: 'x.yokum.app', backdrop: 'contours:a:1', mode: 'invite', ownerEmail: 'o@example.org' })).toEqual([]);
+  });
+
+  it('take the site’s own address, never an amplifyapp.com one, and default a personal site to <name>.yokum.app', () => {
+    expect(addressProblem('budget-reports.yokum.app')).toBeNull();
+    // Built at runtime: the hygiene test refuses Amplify-app-shaped literals.
+    expect(addressProblem(`main.${['d1abc', 'defghijkl'].join('')}.amplifyapp.com`)).toMatch(/not an amplifyapp\.com one/);
+    expect(addressProblem('https://reports.example.org/')).toMatch(/isn't a host name/);
+    expect(defaultAddress('personal', 'budget-reports')).toBe('budget-reports.yokum.app');
+    expect(defaultAddress('a-work-family', 'budget-reports')).toBe('');
+  });
+
+  it('write the address as the passkeys line and the backdrop as the owner’s choice, as a config the site accepts', async () => {
+    const template = readFileSync(join(ROOT, 'site.config.ts'), 'utf8');
+    const { answers, problems } = checkAnswers({ ...good, address: 'Budget-Reports.yokum.app', backdrop: 'contours:mfpxqqpj:1' }, context);
+    expect(problems).toEqual([]);
+    const written = applyAnswers(template, answers);
+    expect(written).toContain("  passkeys: { relyingPartyId: 'budget-reports.yokum.app' } as false | { relyingPartyId: string },");
+    expect(written).toContain("backdrop: { style: 'contours', seed: 'mfpxqqpj', styleVersion: 1, locked: true, chosen: 'owner' } as SiteBackdrop | null,");
+    const { site } = await load(written);
+    expect(site.passkeys).toEqual({ relyingPartyId: 'budget-reports.yokum.app' });
+    expect(describeAnswers(answers).join('\n')).toMatch(/address +budget-reports\.yokum\.app/);
+  });
+
+  it('refuse a bad address or backdrop instead of writing it', () => {
+    expect(checkAnswers({ ...good, address: 'nope' }, context).problems.join(' ')).toMatch(/^Address:/);
+    expect(checkAnswers({ ...good, backdrop: 'contours' }, context).problems.join(' ')).toMatch(/^Backdrop:/);
   });
 });

@@ -23,13 +23,13 @@ describe('the account-assert preflight (scripts/preflight.mjs)', () => {
   });
 
   it('accepts a complete config; amplifyAppId and webAcl are optional and null until chosen', () => {
-    expect(parseDeployConfig(JSON.stringify(good))).toEqual({ ...good, amplifyAppId: null, webAcl: null });
-    expect(parseDeployConfig(JSON.stringify({ ...good, amplifyAppId: null, webAcl: null }))).toEqual({ ...good, amplifyAppId: null, webAcl: null });
+    expect(parseDeployConfig(JSON.stringify(good))).toEqual({ ...good, amplifyAppId: null, webAcl: null, repo: null });
+    expect(parseDeployConfig(JSON.stringify({ ...good, amplifyAppId: null, webAcl: null }))).toEqual({ ...good, amplifyAppId: null, webAcl: null, repo: null });
   });
 
   it('accepts a filled config with the site’s Amplify app ID and the account’s shared web ACL', () => {
     const filled = { ...good, amplifyAppId: 'd1111222233334', webAcl: 'arn:aws:wafv2:us-east-1:111122223333:regional/webacl/auth-kit-shared-user-pools/a7d1c55a-0000-4000-8000-000000000000' };
-    expect(parseDeployConfig(JSON.stringify(filled))).toEqual(filled);
+    expect(parseDeployConfig(JSON.stringify(filled))).toEqual({ ...filled, repo: null });
     expect(parseDeployConfig(JSON.stringify({ ...good, webAcl: 'own' }))).toMatchObject({ webAcl: 'own' });
   });
 
@@ -52,6 +52,11 @@ describe('the account-assert preflight (scripts/preflight.mjs)', () => {
 
   it('refuses the "default" profile: a changed default must never redirect a deploy', () => {
     expect(() => parseDeployConfig(JSON.stringify({ ...good, awsProfile: 'default' }))).toThrow(/default/);
+  });
+
+  it('takes the GitHub repository as owner/name, or null until it’s chosen', () => {
+    expect(parseDeployConfig(JSON.stringify({ ...good, repo: 'example/budget-reports' })).repo).toBe('example/budget-reports');
+    expect(() => parseDeployConfig(JSON.stringify({ ...good, repo: 'https://github.com/example/x' }))).toThrow(/repo must be null or the GitHub repository as owner\/name/);
   });
 
   it('lists every problem at once, including unknown keys', () => {

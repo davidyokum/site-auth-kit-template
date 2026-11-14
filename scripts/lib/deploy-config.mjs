@@ -9,7 +9,10 @@ export const AMPLIFY_APP_ID_RE = /^d[a-z0-9]{13}$/;
 
 const PROFILE_RE = /^[A-Za-z0-9_.+=,@-]{1,64}$/;
 const REGION_RE = /^[a-z]{2}(?:-[a-z]+)+-\d$/;
-const KEYS = new Set(['awsProfile', 'awsAccountId', 'region', 'amplifyAppId', 'webAcl']);
+const KEYS = new Set(['awsProfile', 'awsAccountId', 'region', 'amplifyAppId', 'webAcl', 'repo']);
+
+/** A GitHub repository, `owner/name`. */
+export const REPO_RE = /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
 
 /** A REGIONAL web ACL ARN: `arn:aws:wafv2:<region>:<account>:regional/webacl/<name>/<id>` (Cognito pools take only REGIONAL ones). */
 export const REGIONAL_WEB_ACL_ARN_RE = /^arn:aws:wafv2:([a-z]{2}(?:-[a-z]+)+-\d):(\d{12}):regional\/webacl\/[A-Za-z0-9_-]{1,128}\/[0-9a-f-]{36}$/;
@@ -26,8 +29,11 @@ export const REGIONAL_WEB_ACL_ARN_RE = /^arn:aws:wafv2:([a-z]{2}(?:-[a-z]+)+-\d)
  * Region), `"own"` for a site alone in its account (an ACL of its own, about $7 a month), or `null`
  * (or absent) until you choose, which sandboxes accept and a branch deploy refuses
  * (amplify/web-acl.ts).
+ *
+ * `repo` is the site's GitHub repository, `owner/name` (private; `npm run deploy` makes it if it's
+ * missing), or `null` until it's chosen: deploy needs it.
  * @param {string} text
- * @returns {{ awsProfile: string, awsAccountId: string, region: string, amplifyAppId: string | null, webAcl: string | null }}
+ * @returns {{ awsProfile: string, awsAccountId: string, region: string, amplifyAppId: string | null, webAcl: string | null, repo: string | null }}
  */
 export function parseDeployConfig(text) {
   let raw;
@@ -39,7 +45,7 @@ export function parseDeployConfig(text) {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) throw new Error('deploy.config.json must be a JSON object.');
   const problems = [];
   for (const key of Object.keys(raw)) if (!KEYS.has(key)) problems.push(`unknown key "${key}"`);
-  const { awsProfile, awsAccountId, region, amplifyAppId = null, webAcl = null } = raw;
+  const { awsProfile, awsAccountId, region, amplifyAppId = null, webAcl = null, repo = null } = raw;
   if (typeof awsProfile !== 'string' || !PROFILE_RE.test(awsProfile)) {
     problems.push('awsProfile must name an AWS CLI profile, e.g. "personal"');
   } else if (awsProfile === 'default') {
@@ -55,8 +61,9 @@ export function parseDeployConfig(text) {
     problems.push('amplifyAppId must be null or the Amplify app ID: "d" and 13 lowercase letters or digits');
   }
   problems.push(...webAclProblems(webAcl, { awsAccountId, region }));
+  if (repo !== null && (typeof repo !== 'string' || !REPO_RE.test(repo))) problems.push('repo must be null or the GitHub repository as owner/name');
   if (problems.length > 0) throw new Error(`deploy.config.json:\n- ${problems.join('\n- ')}`);
-  return { awsProfile, awsAccountId, region, amplifyAppId, webAcl };
+  return { awsProfile, awsAccountId, region, amplifyAppId, webAcl, repo };
 }
 
 /**
