@@ -5,7 +5,7 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { defaultBackdrop, latestStyleVersion } from 'auth-kit/backdrops';
+import { latestStyleVersion } from 'auth-kit/backdrops';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createBackdropRoute } from '@/lib/dev/backdrop-route';
 import { describeChange, formatBackdrop, parseChoice, replaceBackdrop, validateChoice, writeBackdropChoice } from '@/scripts/lib/backdrop-config.mjs';
