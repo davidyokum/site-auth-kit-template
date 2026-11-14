@@ -2,6 +2,7 @@
 export declare const PLACEHOLDER_ACCOUNT_ID: '000000000000';
 export declare const AMPLIFY_APP_ID_RE: RegExp;
 export declare const REGIONAL_WEB_ACL_ARN_RE: RegExp;
+export declare const REPO_RE: RegExp;
 
 export interface DeployConfig {
   awsProfile: string;
@@ -11,6 +12,8 @@ export interface DeployConfig {
   amplifyAppId: string | null;
   /** The user pool's web ACL: the account's shared ACL ARN, "own", or null (not chosen yet; sandboxes only). */
   webAcl: string | null;
+  /** The GitHub repository, owner/name; null until chosen (deploy needs it). */
+  repo: string | null;
 }
 
 export interface CallerIdentity {

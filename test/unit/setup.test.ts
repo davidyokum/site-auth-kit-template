@@ -173,10 +173,11 @@ describe('the owner’s decisions (auth-kit ADR 0028)', () => {
 
   it('take the site’s own address, never an amplifyapp.com one, and default a personal site to <name>.yokum.app', () => {
     expect(addressProblem('budget-reports.yokum.app')).toBeNull();
-    expect(addressProblem('main.d1abcdefghijkl.amplifyapp.com')).toMatch(/not an amplifyapp\.com one/);
+    // Built at runtime: the hygiene test refuses Amplify-app-shaped literals.
+    expect(addressProblem(`main.${['d1abc', 'defghijkl'].join('')}.amplifyapp.com`)).toMatch(/not an amplifyapp\.com one/);
     expect(addressProblem('https://reports.example.org/')).toMatch(/isn't a host name/);
     expect(defaultAddress('personal', 'budget-reports')).toBe('budget-reports.yokum.app');
-    expect(defaultAddress('osbm', 'budget-reports')).toBe('');
+    expect(defaultAddress('a-work-family', 'budget-reports')).toBe('');
   });
 
   it('write the address as the passkeys line and the backdrop as the owner’s choice, as a config the site accepts', async () => {

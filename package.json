@@ -29,7 +29,8 @@
     "projects:seed": "node scripts/seed-sample-project.mjs",
     "backdrop:pick": "node scripts/backdrop-pick.mjs",
     "backdrop:set": "node scripts/backdrop-set.mjs",
-    "preview:password": "node scripts/preview-password.mjs"
+    "preview:password": "node scripts/preview-password.mjs",
+    "deploy": "node scripts/deploy.mjs"
   },
   "dependencies": {
     "@aws-amplify/adapter-nextjs": "^1.8.1",

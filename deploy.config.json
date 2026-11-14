@@ -3,5 +3,6 @@
   "awsAccountId": "000000000000",
   "region": "us-east-1",
   "amplifyAppId": null,
-  "webAcl": null
+  "webAcl": null,
+  "repo": null
 }
