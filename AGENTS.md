@@ -15,6 +15,9 @@ Fill in when the site is created (03 §2 Assurance: tier, pool, and account are 
 - **Sender and help address:** `site.config.ts` `email.fromAddress` and `email.replyTo` (null: the family's
   `sign-in@` mailbox and help mailbox in `site.families.ts`; personal: sign-in@yokum.app, help@yokum.app).
 - **Card style:** `site.config.ts` `cardStyle` (the template: 'quiet').
+- **Address:** `site.config.ts` `passkeys.relyingPartyId` (the owner's answer in `npm run setup`; the site
+  goes live there before anyone signs in). **Backdrop:** `site.config.ts` `backdrop`, `chosen: 'owner'`.
+- **GitHub repository:** `deploy.config.json` `repo`.
 - **AWS account, profile, Amplify app ID, and the user pool's web ACL:** `deploy.config.json` (every
   AWS-touching script checks it first; the hygiene test allows its `awsAccountId` and `amplifyAppId` and
   no other IDs; `webAcl` is the account's shared ACL, "own", or null until chosen).
@@ -98,6 +101,14 @@ Fill in when the site is created (03 §2 Assurance: tier, pool, and account are 
     `deploy.config.json` `webAcl` (amplify/web-acl.ts): the account's shared ACL, or `"own"` only when
     the owner says the site is alone in its account. Sign-up sites also need `siteWaf` (register D3).
 
+20. **The site's owner makes the owner's decisions; you put them to the owner.** The site's name, its
+   address, its backdrop, how people get an account, and who the owner is are theirs (auth-kit ADR
+   0028). Never answer them yourself, never pass `--owner-chose` for an answer they didn't give, and
+   never press the picker's "Use this one" for them. `npm run setup -- … --yes` prints the questions
+   when any is missing: ask them all on one card. Show `npm run deploy`'s plan to the owner once
+   before `npm run deploy -- --yes`. The owner's first sign-in is the invite deploy sends: never send
+   them to `/sign-in` with instructions instead.
+
 ## Commands
 
 ```sh
@@ -105,7 +116,10 @@ npm ci
 npm run dev              # http://app.localhost:3000 (bound to 127.0.0.1)
 npm run check            # typecheck, lint, unit tests, build, check:prod-build, auth matrix
 npm run test:matrix      # after `npm run build`
-npm run setup            # a new site: name, family, sender, help mailbox, account creation, owner → site.config.ts
+npm run setup            # a new site → site.config.ts; the owner's answers (name, address, backdrop, accounts, owner) come from the owner
+npm run backdrop:pick    # the owner picks the backdrop (Use this one); backdrop:set -- <style>:<seed>:<version> --owner-chose
+npm run deploy           # prints the plan; show the owner, then: npm run deploy -- --yes (repo, app, build, address, owner invite)
+npx auth-kit upgrade <v> # a new auth-kit: only its lockfile lines, checked with Amplify's npm
 npm run sandbox          # your own sandbox backend (account-checked; ask before deploying)
 npm run personas:seed    # seed personas into the sandbox (account-checked)
 npm run projects:seed    # the sample project's Manager, Contributor, Reader roles (sandbox only)
@@ -125,8 +139,8 @@ npm run waf:smoke -- --url https://<site>   # open sign-up sites, after every de
   Settings, the sign-up and request routes, members' self-service, the request queue, the
   account-change notice route, the mailer
 - `components/auth-scene.tsx` the backdrop behind auth-kit's cards; `lib/backdrop.ts` what it draws and
-  the build's lock check (next.config.ts); never derive the backdrop at build time, and change it only
-  with `npm run backdrop:pick` or `backdrop:lock`
+  the build's lock check (next.config.ts; deploys need `chosen: 'owner'`); never derive the backdrop at
+  build time, and change it only with the owner, through `npm run backdrop:pick` or `backdrop:set`
 - `amplify/` the backend: auth preset (`auth/resource.ts`; the user pool's web ACL in `web-acl.ts`),
   the custom message and preSignUp triggers (`auth/custom-message/`, `auth/pre-sign-up/`), audit log,
   invite-expiry schedule, resource access table, site settings table, rate-limit table, each mode's
