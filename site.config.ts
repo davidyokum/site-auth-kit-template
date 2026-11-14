@@ -19,14 +19,18 @@ import type { CardStyle } from 'auth-kit/themes';
 import type { SiteFamily, SiteHelpAddress } from './site.families';
 
 /**
- * The art behind the sign-in card, as stored. Locked: `{ style, seed, styleVersion, locked: true }`,
- * all literal (auth-kit ADR 0021). `npm run backdrop:pick` and `npm run backdrop:lock` write it.
+ * The art behind the sign-in card, as stored. Locked: `{ style, seed, styleVersion, locked: true,
+ * chosen: 'owner' }`, all literal (auth-kit ADR 0021). The backdrop picker's "Use this one" (the
+ * owner, in the browser), `npm run backdrop:set -- … --owner-chose`, and `npm run setup` write it.
+ * `chosen: 'owner'` records that the site's owner picked it: deploy builds require it (auth-kit
+ * ADR 0028), so an agent can't settle the site's look for them.
  */
 export interface SiteBackdrop {
   readonly style: BackdropStyleId;
   readonly seed?: string | number;
   readonly styleVersion?: number;
   readonly locked?: boolean;
+  readonly chosen?: 'owner';
 }
 
 /**
@@ -54,11 +58,12 @@ export const site = {
   family: 'personal' as SiteFamily,
 
   /**
-   * The art behind the sign-in card (auth-kit/backdrops). Choose it with `npm run backdrop:pick`
-   * (nine variations behind the real card, locally; no AWS), which writes the literal choice here,
-   * locked, with a backup in site.config.ts.bak. The site's name only proposes a default: with
-   * `null` (no choice yet) local development draws that proposal, and production builds fail until
-   * a backdrop is locked (`npm run backdrop:pick`, or `npm run backdrop:lock` to keep the proposal).
+   * The art behind the sign-in card (auth-kit/backdrops). The site's owner chooses it: with
+   * `npm run backdrop:pick` (nine variations behind the real card, locally; no AWS), whose "Use this
+   * one" writes the literal choice here, locked, with a backup in site.config.ts.bak; or by telling
+   * whoever builds the site, who writes it with `npm run backdrop:set -- <style> <seed> <version>
+   * --owner-chose`. The site's name only proposes a default: with `null` (no choice yet) local
+   * development draws that proposal, and deploy builds fail until the owner has chosen.
    * Locked, it never changes: not if the site is renamed, not across auth-kit upgrades.
    * Keep it on one line in this form; the picker rewrites exactly this line.
    */
@@ -215,10 +220,13 @@ export const site = {
   alertEmails: [] as readonly string[],
 
   /**
-   * Passkeys switch on once the site's final custom domain is live: they're bound to it, and
-   * changing it later forces everyone to register again. Until then: `false`.
-   * Later: `{ relyingPartyId: 'www.example.com' }`. The sign-in card then also passes it to auth-kit
-   * (`passkey={{ relyingPartyId }}`), so the passkey window looks the same for every address.
+   * The site's final address, as passkeys are bound to it: `{ relyingPartyId: 'reports.example.org' }`.
+   * `npm run setup` asks for it (a personal site's default is `<name>.yokum.app`), and `npm run
+   * deploy` puts the site on it before the owner is invited, so passkeys work from the first sign-in
+   * (auth-kit ADR 0028). Changing it later forces everyone to register their passkeys again.
+   * `false` only for a site with no address yet (it can't be deployed: deploy needs one). The sign-in
+   * card passes it to auth-kit (`passkey={{ relyingPartyId }}`), so the passkey window looks the same
+   * for every address.
    */
   passkeys: false as false | { relyingPartyId: string },
 

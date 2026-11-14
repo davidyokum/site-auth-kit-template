@@ -1,14 +1,14 @@
 /**
  * Writing the backdrop into site.config.ts (scripts/lib/backdrop-config.mjs): the picker's "Use this
- * one" and `npm run backdrop:lock`. It's code going into a source file, so it's checked hard.
+ * one", `npm run backdrop:set`, and `npm run setup`. It's code going into a source file, so it's checked hard.
  */
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { defaultBackdrop } from 'auth-kit/backdrops';
+import { defaultBackdrop, latestStyleVersion } from 'auth-kit/backdrops';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createBackdropRoute } from '@/lib/dev/backdrop-route';
-import { describeChange, formatBackdrop, lockChoiceFor, replaceBackdrop, validateChoice, writeBackdropChoice } from '@/scripts/lib/backdrop-config.mjs';
+import { describeChange, formatBackdrop, parseChoice, replaceBackdrop, validateChoice, writeBackdropChoice } from '@/scripts/lib/backdrop-config.mjs';
 import { loadSiteConfig } from '@/scripts/lib/site-config.mjs';
 import { site as configured } from '@/site.config';
 
@@ -22,7 +22,7 @@ const CHOICE = { style: 'contours', seed: 'k3f9x2ab', styleVersion: 1 };
 
 describe('validateChoice and formatBackdrop', () => {
   it('writes a locked, literal object', () => {
-    expect(formatBackdrop(CHOICE)).toBe("{ style: 'contours', seed: 'k3f9x2ab', styleVersion: 1, locked: true }");
+    expect(formatBackdrop(CHOICE)).toBe("{ style: 'contours', seed: 'k3f9x2ab', styleVersion: 1, locked: true, chosen: 'owner' }");
     expect(validateChoice({ ...CHOICE, seed: 12345 })).toEqual({ ...CHOICE, seed: '12345' });
   });
 
@@ -43,7 +43,7 @@ describe('replaceBackdrop', () => {
     const { source, previous, next } = replaceBackdrop(REAL, CHOICE);
     expect(previous).toBe('null');
     expect(next).toBe(formatBackdrop(CHOICE));
-    expect(source).toContain("  backdrop: { style: 'contours', seed: 'k3f9x2ab', styleVersion: 1, locked: true } as SiteBackdrop | null,");
+    expect(source).toContain("  backdrop: { style: 'contours', seed: 'k3f9x2ab', styleVersion: 1, locked: true, chosen: 'owner' } as SiteBackdrop | null,");
     expect(source.split('\n').length).toBe(REAL.split('\n').length);
     const changed = source.split('\n').filter((line, i) => line !== REAL.split('\n')[i]);
     expect(changed).toHaveLength(1);
@@ -52,8 +52,8 @@ describe('replaceBackdrop', () => {
   it('replaces an existing choice, including one spread over several lines', () => {
     const once = replaceBackdrop(REAL, CHOICE).source;
     const twice = replaceBackdrop(once, { style: 'aurora', seed: 'zz', styleVersion: 1 });
-    expect(twice.previous).toBe("{ style: 'contours', seed: 'k3f9x2ab', styleVersion: 1, locked: true }");
-    expect(twice.source).toContain("backdrop: { style: 'aurora', seed: 'zz', styleVersion: 1, locked: true } as SiteBackdrop | null,");
+    expect(twice.previous).toBe("{ style: 'contours', seed: 'k3f9x2ab', styleVersion: 1, locked: true, chosen: 'owner' }");
+    expect(twice.source).toContain("backdrop: { style: 'aurora', seed: 'zz', styleVersion: 1, locked: true, chosen: 'owner' } as SiteBackdrop | null,");
     const multi = REAL.replace('backdrop: null as SiteBackdrop | null,', "backdrop: {\n    style: 'ripples',\n    seed: 'abc',\n  } as SiteBackdrop | null,");
     expect(replaceBackdrop(multi, CHOICE).source).toContain("backdrop: { style: 'contours'");
   });
@@ -88,22 +88,21 @@ describe('writeBackdropChoice', () => {
     writeFileSync(join(dir, 'site.families.ts'), readFileSync(join(ROOT, 'site.families.ts'), 'utf8'));
     await writeBackdropChoice(dir, CHOICE);
     const { site } = await loadSiteConfig(dir);
-    expect(site.backdrop).toEqual({ ...CHOICE, locked: true });
+    expect(site.backdrop).toEqual({ ...CHOICE, locked: true, chosen: 'owner' });
   });
 });
 
-describe('lockChoiceFor (npm run backdrop:lock)', () => {
-  it('locks the name’s proposal, literally', () => {
-    const proposal = defaultBackdrop('Example Site');
-    expect(lockChoiceFor({ name: 'Example Site', backdrop: null })).toEqual(proposal);
+describe('parseChoice (npm run backdrop:set, npm run setup --backdrop)', () => {
+  it('reads style:seed:version as the picker shows it, and style:seed as the newest version', () => {
+    expect(parseChoice('contours:k3f9x2ab:1')).toEqual(CHOICE);
+    expect(parseChoice('contours:k3f9x2ab').styleVersion).toBe(latestStyleVersion('contours'));
   });
 
-  it('keeps a style set by hand, filling the seed and version from the proposal', () => {
-    expect(lockChoiceFor({ name: 'Example Site', backdrop: { style: 'ripples' } })).toEqual({ style: 'ripples', seed: defaultBackdrop('Example Site').seed, styleVersion: 1 });
-  });
-
-  it('does nothing to a backdrop that is already locked', () => {
-    expect(lockChoiceFor({ name: 'Renamed Site', backdrop: { ...CHOICE, locked: true } })).toBeNull();
+  it('refuses anything else', () => {
+    expect(() => parseChoice('contours')).toThrow(/style:seed:version/);
+    expect(() => parseChoice('nope:x:1')).toThrow(/isn't a backdrop style/);
+    expect(() => parseChoice('contours:x:99')).toThrow(/no version 99/);
+    expect(() => parseChoice("contours:x';drop:1")).toThrow();
   });
 });
 
@@ -172,6 +171,8 @@ describe('the backdrop commands the README and the build’s lock message name',
   it('are npm scripts', () => {
     const pkg = JSON.parse(readFileSync(join(import.meta.dirname, '..', '..', 'package.json'), 'utf8')) as { scripts: Record<string, string> };
     expect(pkg.scripts['backdrop:pick']).toBe('node scripts/backdrop-pick.mjs');
-    expect(pkg.scripts['backdrop:lock']).toBe('node scripts/backdrop-lock.mjs');
+    expect(pkg.scripts['backdrop:set']).toBe('node scripts/backdrop-set.mjs');
+    // No "keep the proposal": the backdrop is the owner's choice (auth-kit ADR 0028).
+    expect(pkg.scripts['backdrop:lock']).toBeUndefined();
   });
 });

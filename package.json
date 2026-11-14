@@ -28,7 +28,7 @@
     "personas:seed": "node scripts/preflight.mjs --pass-account --exec auth-kit seed-personas",
     "projects:seed": "node scripts/seed-sample-project.mjs",
     "backdrop:pick": "node scripts/backdrop-pick.mjs",
-    "backdrop:lock": "node scripts/backdrop-lock.mjs",
+    "backdrop:set": "node scripts/backdrop-set.mjs",
     "preview:password": "node scripts/preview-password.mjs"
   },
   "dependencies": {

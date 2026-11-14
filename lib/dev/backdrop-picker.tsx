@@ -50,8 +50,8 @@ export function SiteBackdropPicker() {
       onUse={use}
       unlockedHelp={
         <>
-          This site’s backdrop isn’t locked: it’s proposed from the site’s name, so a rename would change it, and deploy builds fail until it’s locked.
-          Choose one below, or keep the proposal with <code>npm run backdrop:lock</code>.
+          This site’s backdrop hasn’t been chosen: it’s proposed from the site’s name, so a rename would change it, and deploy builds fail until the site’s owner chooses one.
+          The owner chooses below; nobody else should press Use this one for them.
         </>
       }
     />

@@ -19,7 +19,7 @@ amplify_outputs*.json
 !ci/amplify_outputs.placeholder.json
 .amplify/
 
-# The backdrop picker's backup of the previous site.config.ts (npm run backdrop:pick, backdrop:lock)
+# The backdrop picker's backup of the previous site.config.ts (npm run backdrop:pick, backdrop:set, setup)
 site.config.ts.bak
 site.config.ts.writing
 

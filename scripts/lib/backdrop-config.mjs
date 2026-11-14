@@ -1,5 +1,8 @@
 // Writing the site's backdrop into site.config.ts (auth-kit ADR 0021): the backdrop picker's "Use
-// this one" (app/api/dev/backdrop/route.dev.ts) and `npm run backdrop:lock` both come here.
+// this one" (app/api/dev/backdrop/route.dev.ts), `npm run backdrop:set`, and `npm run setup` come
+// here. Every write records `chosen: 'owner'`: the only ways in are the owner's own click in the
+// picker, and a choice the owner named (setup and backdrop:set refuse without --owner-chose). There
+// is no "keep the proposal" any more (auth-kit ADR 0028): the site's look is the owner's call.
 //
 // site.config.ts is code, so what goes in is checked first: a style auth-kit has, a version of it
 // this auth-kit has, and a seed of letters, digits, `-` and `_` only (nothing that could close the
@@ -7,7 +10,7 @@
 // is kept in site.config.ts.bak; and the result is read back and checked before it counts as saved.
 import { readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { backdropLockProblems, backdropStyle, defaultBackdrop, isBackdropStyleId, latestStyleVersion } from 'auth-kit/backdrops';
+import { backdropStyle, isBackdropStyleId, latestStyleVersion } from 'auth-kit/backdrops';
 
 export const CONFIG_FILE = 'site.config.ts';
 export const BACKUP_FILE = 'site.config.ts.bak';
@@ -42,7 +45,7 @@ export function validateChoice(value) {
  */
 export function formatBackdrop(choice) {
   const { style, seed, styleVersion } = validateChoice(choice);
-  return `{ style: '${style}', seed: '${seed}', styleVersion: ${styleVersion}, locked: true }`;
+  return `{ style: '${style}', seed: '${seed}', styleVersion: ${styleVersion}, locked: true, chosen: 'owner' }`;
 }
 
 /**
@@ -68,19 +71,15 @@ export function replaceBackdrop(source, choice) {
 }
 
 /**
- * What `npm run backdrop:lock` writes: the backdrop the site draws now, made literal. A style set
- * by hand is kept; a missing seed or version comes from the name's proposal. Null if already locked.
- * @param {{ name: string, backdrop: unknown }} site
- * @returns {{ style: string, seed: string, styleVersion: number } | null}
+ * A choice as `npm run backdrop:set` and `npm run setup --backdrop` take it: `style:seed:version`
+ * (the picker shows each variation's three values), or `style:seed` for the style's newest version.
+ * @param {string} text
+ * @returns {{ style: string, seed: string, styleVersion: number }}
  */
-export function lockChoiceFor(site) {
-  if (backdropLockProblems(site.backdrop).length === 0) return null;
-  const proposal = defaultBackdrop(site.name);
-  const stored = /** @type {Record<string, unknown> | null} */ (typeof site.backdrop === 'object' ? site.backdrop : null);
-  const style = stored && isBackdropStyleId(stored.style) && backdropStyle(stored.style)?.generative ? stored.style : proposal.style;
-  const seed = stored && (typeof stored.seed === 'string' || typeof stored.seed === 'number') && SEED_RE.test(String(stored.seed)) ? String(stored.seed) : proposal.seed;
-  const version = stored && Number.isInteger(stored.styleVersion) ? /** @type {number} */ (stored.styleVersion) : latestStyleVersion(style);
-  return validateChoice({ style, seed, styleVersion: version });
+export function parseChoice(text) {
+  const [style, seed, version, ...rest] = String(text).trim().split(':');
+  if (!style || !seed || rest.length > 0) throw new Error(`"${text}" isn't a backdrop choice: write style:seed:version, as the picker shows it (e.g. contours:mfpxqqpj:2).`);
+  return validateChoice({ style, seed, styleVersion: version === undefined ? (isBackdropStyleId(style) ? latestStyleVersion(style) : 1) : Number(version) });
 }
 
 /**
