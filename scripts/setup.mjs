@@ -1,16 +1,22 @@
 #!/usr/bin/env node
 // `npm run setup`: the first step of a new site made from this template. It asks for the site's
-// name, its family, its sender, its help mailbox, how people get an account, and the owner's email
-// address, then writes them into site.config.ts (and puts personas.json on the site's own .test
-// domain). The card style isn't asked: Quiet is the default (register E5); change `cardStyle` in
-// site.config.ts if the site wants another.
+// name, its family, its sender, its help mailbox, how people get an account, the owner's email
+// address, the site's address, and its backdrop, then writes them into site.config.ts (and puts
+// personas.json on the site's own .test domain). The card style isn't asked: Quiet is the default
+// (register E5); change `cardStyle` in site.config.ts if the site wants another.
+//
+// The name, the address, the backdrop, how people get an account, and the owner are the site
+// OWNER's decisions (auth-kit ADR 0028). An agent running setup puts them to the owner: run with
+// --yes and anything missing, setup writes nothing, prints the questions to ask on one card, and
+// exits 3. With every answer, --owner-chose says the owner gave them.
 //
 // Run it again any time: each question offers the current value. Nothing here touches AWS, and it
 // never asks for or writes a secret (every answer is public: it reaches the browser or AWS tags).
 //
-// Non-interactive (scripts, CI): pass every answer and --yes, e.g.
+// Non-interactive (an agent, CI): pass every answer, --owner-chose, and --yes, e.g.
 //   npm run setup -- --name "Budget Reports" --family personal --help help@yokum.app \
-//     --mode invite --owner-email owner@example.org --yes
+//     --mode invite --owner-email owner@example.org --address budget-reports.yokum.app \
+//     --backdrop contours:mfpxqqpj:2 --owner-chose --yes
 // A work-family site adds --sender sign-in@<its verified domain> (personal sites send from
 // sign-in@yokum.app, the family's).
 // Domains mode adds --domains example.org,example.com [--requests-also] and --privacy /privacy.
@@ -22,7 +28,7 @@ import { stdin, stdout } from 'node:process';
 import { createInterface } from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { MODES, applyAnswers, applyPersonaDomain, checkAnswers, describeAnswers } from './lib/setup-config.mjs';
+import { MODES, addressProblem, applyAnswers, applyPersonaDomain, checkAnswers, defaultAddress, describeAnswers, openOwnerQuestions, slugify } from './lib/setup-config.mjs';
 import { loadSiteModules } from './lib/site-config.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -40,6 +46,9 @@ const { values: flags } = parseArgs({
     privacy: { type: 'string' },
     'owner-email': { type: 'string' },
     'owner-name': { type: 'string' },
+    address: { type: 'string' },
+    backdrop: { type: 'string' },
+    'owner-chose': { type: 'boolean' },
     yes: { type: 'boolean', short: 'y' },
   },
   strict: true,
@@ -70,6 +79,19 @@ async function askUntil(question, fallback, flag, check) {
     if (!problem) return value;
     if (!rl || flag !== undefined) throw new Error(problem);
     console.log(`  ${problem}`);
+  }
+}
+
+// Run by an agent (--yes): the owner's decisions come from the owner, all at once, before anything is
+// written. Missing any, or without --owner-chose: print the questions and stop.
+if (flags.yes) {
+  const open = openOwnerQuestions({ name: flags.name, address: flags.address, backdrop: flags.backdrop, mode: flags.mode, ownerEmail: flags['owner-email'] });
+  if (open.length > 0 || flags['owner-chose'] !== true) {
+    const asks = open.length > 0 ? open : openOwnerQuestions({});
+    console.log("setup: nothing written. These are the site owner's decisions; ask them on one card, then run setup again with every answer and --owner-chose:\n");
+    asks.forEach((d, i) => console.log(`  ${i + 1}. ${d.question}\n     (${d.flag})`));
+    if (open.length === 0) console.log('\n  Every answer is here, but --owner-chose is missing: pass it only if the owner gave these answers.');
+    process.exit(3);
   }
 }
 
@@ -127,8 +149,18 @@ try {
   if (m === 'domains' || m === 'open') privacyNoticeUrl = await ask('Privacy notice (a site path like /privacy, or an https URL)', privacyNoticeUrl ?? '/privacy', flags.privacy);
   const ownerEmail = await askUntil("The owner's email address (the one person in the owner group)", String(current.ownerEmail ?? ''), flags['owner-email'], (v) => (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim()) ? null : 'An email address.'));
   const ownerName = context.namesOwner[fam] === true ? await ask("The owner's name, as the help screens show it (Enter to skip)", String(current.ownerName ?? ''), flags['owner-name']) : null;
+  const currentAddress = typeof current.passkeys === 'object' && current.passkeys !== null ? String(current.passkeys.relyingPartyId) : defaultAddress(fam, slugify(name));
+  const address = await askUntil(
+    "The site's address (passkeys are bound to it, so it's set before anyone signs in)",
+    currentAddress,
+    flags.address,
+    (v) => addressProblem(v),
+  );
+  // The backdrop: the owner names one (style:seed:version, as the picker shows it), or picks it in the
+  // picker after setup. An interactive run is the owner at the terminal.
+  const backdrop = flags.backdrop ?? (rl ? await ask('Backdrop, as style:seed:version from the picker (Enter: choose it in the picker after setup, npm run backdrop:pick)', '', undefined) : '');
 
-  const { answers, problems } = checkAnswers({ name, family: fam, sender, help, helpPersonal, mode: m, domains, requestsAlso, privacyNoticeUrl, ownerEmail, ownerName }, context);
+  const { answers, problems } = checkAnswers({ name, family: fam, sender, help, helpPersonal, mode: m, domains, requestsAlso, privacyNoticeUrl, ownerEmail, ownerName, address, backdrop }, context);
   if (problems.length > 0) throw new Error(problems.join('\n'));
   console.log(`\nThis goes into site.config.ts:\n${describeAnswers(answers).join('\n')}\n`);
   if (rl && /^n/i.test(await ask('Write it? (Y/n)', '', undefined))) {
@@ -141,11 +173,13 @@ try {
   const personasPath = join(root, 'personas.json');
   writeFileSync(personasPath, applyPersonaDomain(readFileSync(personasPath, 'utf8'), answers.project));
   console.log('Wrote site.config.ts and personas.json. Next:');
-  console.log('  - deploy.config.json: the AWS profile and account this site deploys to (README, "Start a new site", step 4)');
+  if (!answers.backdrop) console.log("  - the backdrop: npm run backdrop:pick, and the site's owner presses Use this one on the one they want");
+  console.log('  - deploy.config.json: the AWS profile and account this site deploys to, and its GitHub repo (README, "Start a new site", step 4)');
   if (answers.fromAddress !== null) console.log(`  - verify ${answers.sender.slice(answers.sender.indexOf('@') + 1)} in Amazon SES in the account this site deploys to (SPF, DKIM, and DMARC published)`);
   if (m === 'domains' || m === 'open') console.log('  - siteWaf in site.config.ts: the site web ACL and its JavaScript integration (required on sign-up sites; README, "Account creation")');
   if (m !== 'invite') console.log(`  - ${m === 'request' ? 'the request page' : 'the sign-up page'} links your privacy notice: make sure it exists`);
   console.log('  - npm run check, then commit');
+  console.log(`  - npm run deploy: prints the plan to put it online at ${answers.address}; show it to the owner, then npm run deploy -- --yes`);
 } catch (error) {
   console.error(`setup: ${error instanceof Error ? error.message : String(error)}`);
   process.exitCode = 1;

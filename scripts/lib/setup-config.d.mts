@@ -17,6 +17,9 @@ export interface SetupAnswersInput {
   privacyNoticeUrl?: string | null;
   ownerEmail?: string;
   ownerName?: string | null;
+  address?: string | null;
+  /** `style:seed:version`, as the picker shows it. */
+  backdrop?: string | null;
 }
 export interface SetupAnswers {
   name: string;
@@ -33,7 +36,18 @@ export interface SetupAnswers {
   privacyNoticeUrl: string | null;
   ownerEmail: string;
   ownerName: string | null;
+  address: string | null;
+  backdrop: { style: string; seed: string; styleVersion: number } | null;
 }
+export interface OwnerDecision {
+  key: 'name' | 'address' | 'backdrop' | 'mode' | 'ownerEmail';
+  flag: string;
+  question: string;
+}
+export declare const OWNER_DECISIONS: readonly OwnerDecision[];
+export declare function openOwnerQuestions(given: Record<string, unknown>): OwnerDecision[];
+export declare function addressProblem(value: string): string | null;
+export declare function defaultAddress(family: string, project: string): string;
 export declare function slugify(name: string): string;
 export declare function tsString(value: string): string;
 export declare function checkAnswers(raw: SetupAnswersInput, context: SetupContext): { answers: SetupAnswers; problems: string[] };
