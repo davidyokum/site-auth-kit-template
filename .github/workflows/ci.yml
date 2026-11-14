@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Weekly, so a newer auth-kit shows up here even when nothing else changes.
+  schedule:
+    - cron: '17 9 * * 1'
 
 permissions:
   contents: read
@@ -13,6 +16,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # A site made from the template starts on the newest auth-kit (auth-kit ADR 0028). Fails, naming
+  # the one command, when a newer release is out: npx auth-kit upgrade <version>.
+  kit-current:
+    name: auth-kit is current
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - run: node scripts/check-kit-current.mjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
   check:
     name: typecheck, lint, unit tests, build, production-build checks, auth matrix
     runs-on: ubuntu-latest
