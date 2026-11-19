@@ -33,6 +33,8 @@ export default async function AccountPage() {
           issuer={site.name}
           siteName={site.name}
           passkeysEnabled={site.passkeys !== false}
+          // Simple: "How you sign in" and how long a sign-in lasts here, in place of passkeys and passwords.
+          signIn={site.signIn}
           signedOutPath="/signed-out"
           stepUpHref={signInUrl('/account', { reauth: true })}
           {...(selfService && { selfService, itemsNote: 'Your roles on projects are removed; the projects stay with their other Managers.' })}

@@ -5,7 +5,7 @@
 // personas.json on the site's own .test domain). The card style isn't asked: Quiet is the default
 // (register E5); change `cardStyle` in site.config.ts if the site wants another.
 //
-// The name, the address, the backdrop, how people get an account, and the owner are the site
+// The name, the address, the backdrop, how people sign in, how people get an account, and the owner are the site
 // OWNER's decisions (auth-kit ADR 0028). An agent running setup puts them to the owner: run with
 // --yes and anything missing, setup writes nothing, prints the questions to ask on one card, and
 // exits 3. With every answer, --owner-chose says the owner gave them.
@@ -15,10 +15,12 @@
 //
 // Non-interactive (an agent, CI): pass every answer, --owner-chose, and --yes, e.g.
 //   npm run setup -- --name "Budget Reports" --family personal --help help@yokum.app \
-//     --mode invite --owner-email owner@example.org --address budget-reports.yokum.app \
+//     --sign-in full --mode invite --owner-email owner@example.org --address budget-reports.yokum.app \
 //     --backdrop contours:mfpxqqpj:2 --owner-chose --yes
 // A work-family site adds --sender sign-in@<its verified domain> (personal sites send from
 // sign-in@yokum.app, the family's).
+// Simple sign-in ("Simple: code only", auth-kit ADR 0029) is --sign-in simple --stay 30 (or 7,
+// another number of days, or "every visit"); it's invite or request only.
 // Domains mode adds --domains example.org,example.com [--requests-also] and --privacy /privacy.
 // A person's own help address (register E4c: a site that's deliberately one person) needs
 // --help-personal.
@@ -28,7 +30,7 @@ import { stdin, stdout } from 'node:process';
 import { createInterface } from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { MODES, addressProblem, applyAnswers, applyPersonaDomain, checkAnswers, defaultAddress, describeAnswers, openOwnerQuestions, slugify } from './lib/setup-config.mjs';
+import { MODES, SIGN_IN_MODE_LABEL, addressProblem, applyAnswers, applyPersonaDomain, checkAnswers, defaultAddress, describeAnswers, openOwnerQuestions, slugify } from './lib/setup-config.mjs';
 import { loadSiteModules } from './lib/site-config.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -40,6 +42,8 @@ const { values: flags } = parseArgs({
     sender: { type: 'string' },
     help: { type: 'string' },
     'help-personal': { type: 'boolean' },
+    'sign-in': { type: 'string' },
+    stay: { type: 'string' },
     mode: { type: 'string' },
     domains: { type: 'string' },
     'requests-also': { type: 'boolean' },
@@ -85,7 +89,7 @@ async function askUntil(question, fallback, flag, check) {
 // Run by an agent (--yes): the owner's decisions come from the owner, all at once, before anything is
 // written. Missing any, or without --owner-chose: print the questions and stop.
 if (flags.yes) {
-  const open = openOwnerQuestions({ name: flags.name, address: flags.address, backdrop: flags.backdrop, mode: flags.mode, ownerEmail: flags['owner-email'] });
+  const open = openOwnerQuestions({ name: flags.name, address: flags.address, backdrop: flags.backdrop, signIn: flags['sign-in'], stay: flags.stay, mode: flags.mode, ownerEmail: flags['owner-email'] });
   if (open.length > 0 || flags['owner-chose'] !== true) {
     const asks = open.length > 0 ? open : openOwnerQuestions({});
     console.log("setup: nothing written. These are the site owner's decisions; ask them on one card, then run setup again with every answer and --owner-chose:\n");
@@ -135,6 +139,16 @@ try {
     helpPersonal = /^y/i.test(await ask("That looks like a person's own address. Is that on purpose, for a site that's deliberately one person's (register E4c)? (y/N)", '', undefined));
     if (!helpPersonal) throw new Error('Use a role-based help mailbox (help@…, apps-help@…), then run setup again.');
   }
+  // How people sign in (auth-kit ADR 0029), right before how they get an account.
+  const currentSignIn = current.signIn?.mode ?? 'full';
+  console.log(`\nHow do people sign in?\n  full    ${SIGN_IN_MODE_LABEL.full} (the default)\n  simple  ${SIGN_IN_MODE_LABEL.simple}: an emailed code every time, nothing else to set up.\n          For small sites people visit a few times; the site is as safe as its members' inboxes.\n          Invite or request only. A Simple site can move to Full later; a Full site can't become Simple.`);
+  const signInMode = (await askUntil('Sign-in (full, simple)', currentSignIn, flags['sign-in'], (v) => (['full', 'simple'].includes(v.trim().toLowerCase()) ? null : 'full or simple.'))).trim().toLowerCase();
+  let stay;
+  if (signInMode === 'simple') {
+    const currentStay = current.signIn?.mode === 'simple' && current.signIn.stay !== undefined ? (current.signIn.stay === 'browser' ? 'every visit' : String(current.signIn.stay)) : '30';
+    console.log('\nHow long does a sign-in last on one device?\n  every visit  until the browser quits\n  7            7 days\n  30           30 days (the default)\n  or another whole number of days');
+    stay = await ask('Stay signed in', currentStay, flags.stay);
+  }
   const currentMode = current.accountCreation?.mode ?? 'invite';
   console.log('\nHow do people get an account?\n  invite   invite only (an admin invites; the default)\n  request  anyone may ask; an admin approves\n  domains  addresses on a list sign up themselves (needs the site web ACL first)\n  open     anyone signs up (needs the site web ACL first; README, "Account creation")');
   const mode = await askUntil(`Account creation (${MODES.join(', ')})`, currentMode, flags.mode, (v) => (MODES.includes(v.trim().toLowerCase()) ? null : `One of ${MODES.join(', ')}.`));
@@ -160,7 +174,7 @@ try {
   // picker after setup. An interactive run is the owner at the terminal.
   const backdrop = flags.backdrop ?? (rl ? await ask('Backdrop, as style:seed:version from the picker (Enter: choose it in the picker after setup, npm run backdrop:pick)', '', undefined) : '');
 
-  const { answers, problems } = checkAnswers({ name, family: fam, sender, help, helpPersonal, mode: m, domains, requestsAlso, privacyNoticeUrl, ownerEmail, ownerName, address, backdrop }, context);
+  const { answers, problems } = checkAnswers({ name, family: fam, sender, help, helpPersonal, signIn: signInMode, stay, tier: current.tier === 3 ? 3 : 2, mode: m, domains, requestsAlso, privacyNoticeUrl, ownerEmail, ownerName, address, backdrop }, context);
   if (problems.length > 0) throw new Error(problems.join('\n'));
   console.log(`\nThis goes into site.config.ts:\n${describeAnswers(answers).join('\n')}\n`);
   if (rl && /^n/i.test(await ask('Write it? (Y/n)', '', undefined))) {
@@ -178,6 +192,7 @@ try {
   if (answers.fromAddress !== null) console.log(`  - verify ${answers.sender.slice(answers.sender.indexOf('@') + 1)} in Amazon SES in the account this site deploys to (SPF, DKIM, and DMARC published)`);
   if (m === 'domains' || m === 'open') console.log('  - siteWaf in site.config.ts: the site web ACL and its JavaScript integration (required on sign-up sites; README, "Account creation")');
   if (m !== 'invite') console.log(`  - ${m === 'request' ? 'the request page' : 'the sign-up page'} links your privacy notice: make sure it exists`);
+  if (answers.signIn.mode === 'simple') console.log('  - Simple sign-in: the README\'s "Sign-in modes" says what changes (no passkey, password, or authenticator pages)');
   console.log('  - npm run check, then commit');
   console.log(`  - npm run deploy: prints the plan to put it online at ${answers.address}; show it to the owner, then npm run deploy -- --yes`);
 } catch (error) {

@@ -24,6 +24,7 @@ function renderCard(family: SiteFamily) {
       theme={theme}
       help={signInHelpProp(site, help)}
       passkeysEnabled={site.passkeys !== false}
+      signIn={site.signIn}
       accountCreation={site.accountCreation}
       codeLifetimeMinutes={site.codeLifetimeMinutes}
       navigate={() => undefined}

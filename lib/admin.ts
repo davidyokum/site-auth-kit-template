@@ -46,6 +46,8 @@ export function peopleActions(): PeopleActions {
     // Request sites: the "Pending requests" tab (decline is silent; notifyOnDecline: true sends a note).
     ...(requests && { accessRequests: requests }),
     siteName: site.name,
+    // Full or Simple (auth-kit ADR 0029): a Simple site's invites say the emailed code is all there is.
+    signIn: site.signIn,
     signInUrl: `${publicOrigin()}/sign-in`,
     inviteDomains: site.inviteDomains,
     onChange: alertOnPeopleChange,

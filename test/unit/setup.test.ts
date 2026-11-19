@@ -11,7 +11,7 @@ import { parsePersonas } from 'auth-kit/dev';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import { siteConfigProblems, type CheckedSite } from '@/lib/site-checks';
-import { addressProblem, applyAnswers, applyPersonaDomain, checkAnswers, defaultAddress, describeAnswers, OWNER_DECISIONS, openOwnerQuestions, replaceConfigLine, slugify, tsString } from '@/scripts/lib/setup-config.mjs';
+import { addressProblem, applyAnswers, applyPersonaDomain, checkAnswers, defaultAddress, describeAnswers, OWNER_DECISIONS, openOwnerQuestions, parseStay, replaceConfigLine, signInLiteral, slugify, tsString } from '@/scripts/lib/setup-config.mjs';
 import { FAMILY_HELP_MAILBOX, FAMILY_NAMES_OWNER, FAMILY_SENDER, SITE_FAMILIES } from '@/site.families';
 
 const ROOT = join(import.meta.dirname, '..', '..');
@@ -150,8 +150,10 @@ describe('writing site.config.ts (applyAnswers)', () => {
 
   it('never writes a secret: no password, key, token, or account ID among the answers it writes', () => {
     const { answers } = checkAnswers(good, context);
-    expect(Object.keys(answers).sort()).toEqual(['accountCreation', 'address', 'backdrop', 'family', 'fromAddress', 'help', 'helpPersonal', 'name', 'ownerEmail', 'ownerName', 'privacyNoticeUrl', 'project', 'replyTo', 'sender']);
-    expect(describeAnswers(answers).join('\n')).not.toMatch(/password|secret|token|\d{12}/i);
+    expect(Object.keys(answers).sort()).toEqual(['accountCreation', 'address', 'backdrop', 'family', 'fromAddress', 'help', 'helpPersonal', 'name', 'ownerEmail', 'ownerName', 'privacyNoticeUrl', 'project', 'replyTo', 'sender', 'signIn']);
+    // The sign-in line names the mode ("Full: code, passkey, password"), not a password.
+    const lines = describeAnswers(answers).filter((l) => !l.startsWith('  sign-in '));
+    expect(lines.join('\n')).not.toMatch(/password|secret|token|\d{12}/i);
   });
 });
 
@@ -165,10 +167,35 @@ describe('personas.json (applyPersonaDomain)', () => {
 });
 
 describe('the owner’s decisions (auth-kit ADR 0028)', () => {
-  it('are the name, the address, the backdrop, how people get an account, and the owner', () => {
-    expect(OWNER_DECISIONS.map((d) => d.key)).toEqual(['name', 'address', 'backdrop', 'mode', 'ownerEmail']);
-    expect(openOwnerQuestions({ name: 'Budget Reports', mode: 'invite', ownerEmail: 'o@example.org' }).map((d) => d.flag)).toEqual(['--address', '--backdrop']);
-    expect(openOwnerQuestions({ name: 'x', address: 'x.yokum.app', backdrop: 'contours:a:1', mode: 'invite', ownerEmail: 'o@example.org' })).toEqual([]);
+  it('are the name, the address, the backdrop, how people sign in, how people get an account, and the owner', () => {
+    expect(OWNER_DECISIONS.map((d) => d.key)).toEqual(['name', 'address', 'backdrop', 'signIn', 'stay', 'mode', 'ownerEmail']);
+    expect(openOwnerQuestions({ name: 'Budget Reports', mode: 'invite', ownerEmail: 'o@example.org' }).map((d) => d.flag)).toEqual(['--address', '--backdrop', '--sign-in']);
+    const all = { name: 'x', address: 'x.yokum.app', backdrop: 'contours:a:1', signIn: 'full', mode: 'invite', ownerEmail: 'o@example.org' };
+    expect(openOwnerQuestions(all)).toEqual([]);
+    // How long a sign-in lasts is asked only on Simple, right after the mode.
+    expect(openOwnerQuestions({ ...all, signIn: 'simple' }).map((d) => d.flag)).toEqual(['--stay']);
+    expect(openOwnerQuestions({ ...all, signIn: 'simple', stay: '30' })).toEqual([]);
+    expect(OWNER_DECISIONS.find((d) => d.key === 'signIn')?.question).toContain('"Full: code, passkey, password" (the default), or "Simple: code only"');
+  });
+
+  it('write the sign-in mode and the stay (auth-kit ADR 0029), refusing what Simple can’t do', async () => {
+    expect(checkAnswers(good, context).answers.signIn).toEqual({ mode: 'full' });
+    expect(checkAnswers({ ...good, signIn: 'simple' }, context).answers.signIn).toEqual({ mode: 'simple', stay: 30 });
+    expect(checkAnswers({ ...good, signIn: 'Simple', stay: 'every visit' }, context).answers.signIn).toEqual({ mode: 'simple', stay: 'browser' });
+    expect(checkAnswers({ ...good, signIn: 'simple', stay: '7 days' }, context).answers.signIn).toEqual({ mode: 'simple', stay: 7 });
+    expect(checkAnswers({ ...good, signIn: 'simple', tier: 3 }, context).answers.signIn).toEqual({ mode: 'simple', stay: 1 });
+    expect(checkAnswers({ ...good, signIn: 'simple', stay: '31' }, context).problems.join(' ')).toMatch(/from 1 to 30, not "31"/);
+    expect(checkAnswers({ ...good, signIn: 'simple', stay: '7', tier: 3 }, context).problems.join(' ')).toMatch(/Tier 3 sign-ins last at most a day/);
+    expect(checkAnswers({ ...good, signIn: 'code' }, context).problems.join(' ')).toMatch(/must be full/);
+    expect(checkAnswers({ ...good, signIn: 'simple', mode: 'open', privacyNoticeUrl: '/privacy' }, context).problems.join(' ')).toMatch(/invite only \(or request\)/);
+    expect(checkAnswers({ ...good, signIn: 'simple', mode: 'request' }, context).problems).toEqual([]);
+    expect([parseStay('browser'), parseStay('every visit'), parseStay('30'), parseStay('2.5'), parseStay('soon')]).toEqual(['browser', 'browser', 30, null, null]);
+    expect(signInLiteral({ mode: 'simple', stay: 'browser' })).toBe("{ mode: 'simple', stay: 'browser' }");
+    const template = readFileSync(join(ROOT, 'site.config.ts'), 'utf8');
+    const answers = checkAnswers({ ...good, signIn: 'simple', stay: '7' }, context).answers;
+    const { site } = await load(applyAnswers(template, answers));
+    expect(site.signIn).toEqual({ mode: 'simple', stay: 7 });
+    expect(describeAnswers(answers).join('\n')).toMatch(/sign-in {11}Simple: code only, 7 days on one device\n.*as safe as its members’ inboxes/);
   });
 
   it('take the site’s own address, never an amplifyapp.com one, and default a personal site to <name>.yokum.app', () => {

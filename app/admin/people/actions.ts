@@ -18,6 +18,11 @@ export async function invite(previous: ActionResult | null, data: FormData): Pro
   return after(await peopleActions().forms.invite(previous, data));
 }
 
+/** "Add several at once" (auth-kit ADR 0029): up to 50 pasted addresses, as Member or an app role, each the ordinary invite. */
+export async function inviteMany(previous: ActionResult | null, data: FormData): Promise<ActionResult> {
+  return after(await peopleActions().forms.inviteMany(previous, data));
+}
+
 export async function resend(previous: ActionResult | null, data: FormData): Promise<ActionResult> {
   return after(await peopleActions().forms.resend(previous, data));
 }

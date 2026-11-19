@@ -54,6 +54,9 @@ export const authOptions = {
     replyTo: helpSettingFor(site),
   },
   passkeys: site.passkeys,
+  // How people sign in (site.config.ts `signIn`: Full, or Simple, an emailed code only; auth-kit ADR
+  // 0029). Simple's pool takes only emailed codes, and its refresh token lasts the site's `stay`.
+  signIn: site.signIn,
   // App roles beyond the site-wide roles live in site.config.ts (the app reads them too).
   appRoles: site.appRoles,
 

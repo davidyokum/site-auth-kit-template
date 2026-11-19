@@ -17,6 +17,7 @@
  */
 import { createPageGuards, createServerAuth, poolConfigFromAmplifyOutputs } from 'auth-kit/server';
 import { matrixOverrides } from '@/dev-matrix';
+import { site } from '@/site.config';
 import { capabilities } from './capabilities';
 import { outputs } from './outputs';
 import { resourceStore, resourceTypes } from './resources';
@@ -24,6 +25,9 @@ import { resourceStore, resourceTypes } from './resources';
 export const auth = createServerAuth({
   ...poolConfigFromAmplifyOutputs(outputs),
   capabilities,
+  // Full or Simple (site.config.ts `signIn`): on a Simple site an emailed code is everyone's only
+  // credential, so the server doesn't ask for a passkey or a password (auth-kit ADR 0029).
+  signIn: site.signIn,
   // Resource roles (Manager, Contributor, Reader on one project): lib/resources.ts.
   resources: { types: resourceTypes, store: resourceStore },
   // Only under `next dev` with AUTH_KIT_MATRIX=1 (the auth-matrix tests): auth-kit's matrix server

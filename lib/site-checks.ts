@@ -9,6 +9,9 @@
  * - a help address: the site's own or its family's, role-based (auth-kit refuses a placeholder, and a
  *   person's own address unless it's acknowledged with `{ address, personal: true }`, register E4c);
  * - a known card style (register E5);
+ * - a sign-in mode auth-kit takes (ADR 0029): Full, or Simple with a stay from 1 day to the tier's
+ *   ceiling or 'browser'; Simple only on invite or request sites (a sign-up page asks for a passkey
+ *   or a password);
  * - a known account-creation mode, with a domain list in 'domains' mode;
  * - sign-up sites ('domains', 'open'): a privacy notice, and the site web ACL with its JavaScript
  *   integration (`siteWaf`; every sign-up gets the silent WAF check, register D3);
@@ -28,6 +31,27 @@ export interface CheckedSite extends FamilySite {
   readonly privacyNoticeUrl: string | null;
   readonly termsUrl: string | null;
   readonly siteWaf: SiteWaf | null;
+  /** auth-kit's `SignInSettings` (ADR 0029); missing is Full. */
+  readonly signIn?: { readonly mode: string; readonly stay?: unknown };
+  readonly tier?: 2 | 3;
+}
+
+/** The sign-in setting's problems, as auth-kit's `normalizeSignIn` would report them (test/unit/site-checks.test.ts keeps the two in step). */
+export function signInProblems(signIn: CheckedSite['signIn'], tier: 2 | 3, accountCreation: AccountCreationLike): string[] {
+  if (signIn === undefined) return [];
+  if (typeof signIn !== 'object' || signIn === null) return ["site.config.ts signIn must be { mode: 'full' } or { mode: 'simple', stay }."];
+  if (signIn.mode === 'full') return signIn.stay === undefined ? [] : ['site.config.ts signIn.stay is for Simple sign-in only; Full sessions follow the tier.'];
+  if (signIn.mode !== 'simple') return [`site.config.ts signIn.mode must be 'full' or 'simple', not ${JSON.stringify(signIn.mode)}.`];
+  const problems: string[] = [];
+  const max = tier === 3 ? 1 : 30;
+  const stay = signIn.stay;
+  if (stay !== undefined && stay !== 'browser' && !(typeof stay === 'number' && Number.isInteger(stay) && stay >= 1 && stay <= max)) {
+    problems.push(`site.config.ts signIn.stay must be 'browser' or ${max === 1 ? '1 (Tier 3 sign-ins last at most a day)' : `a whole number of days from 1 to ${max}`}, not ${JSON.stringify(stay)}.`);
+  }
+  if (takesSignUps(accountCreation)) {
+    problems.push(`site.config.ts signIn: "Simple: code only" is invite only (or request); a '${accountCreation.mode}' site's sign-up page asks for a passkey or a password. Use invite or request, or { mode: 'full' }.`);
+  }
+  return problems;
 }
 
 const SITE_WEB_ACL_ARN = /^arn:aws:wafv2:us-east-1:\d{12}:global\/webacl\/[A-Za-z0-9_-]{1,128}\/[0-9a-f-]{36}$/;
@@ -65,6 +89,8 @@ export function siteConfigProblems(site: CheckedSite): string[] {
   if (site.cardStyle !== undefined && !CARD_STYLES.includes(site.cardStyle)) {
     problems.push(`site.config.ts cardStyle must be one of ${CARD_STYLES.map((s) => `'${s}'`).join(', ')} (got ${JSON.stringify(site.cardStyle)}).`);
   }
+
+  problems.push(...signInProblems(site.signIn, site.tier === 3 ? 3 : 2, site.accountCreation));
 
   const { mode, domains, requestsAlso } = site.accountCreation;
   if (!['invite', 'request', 'domains', 'open'].includes(mode)) {

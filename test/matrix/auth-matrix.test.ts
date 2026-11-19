@@ -17,6 +17,11 @@
  * answer on every row (a second member's on project routes), and auth-kit refuses a row that would
  * let it do more.
  *
+ * On a Simple sign-in site (site.config.ts `signIn`; auth-kit ADR 0029) every account has only emailed
+ * codes, so `codeOnlyMember` is an ordinary member: auth-kit gives it a member's answer (a second
+ * member's on project routes), and the passkey and password pages (/account/sign-in-method,
+ * /account/authenticator) don't exist.
+ *
  * The account-creation rows follow site.config.ts's `accountCreation`: sign-up sites have /sign-up and
  * its route, request sites /request-access and its route, and invite-only sites neither (the build
  * doesn't have them; lib/account-modes.ts).
@@ -26,6 +31,9 @@ import { join } from 'node:path';
 import { beforeAll, describe, expect, inject, it } from 'vitest';
 import { takesRequests, takesSignUps } from '@/lib/account-modes';
 import { site } from '@/site.config';
+
+/** A Simple sign-in site (site.config.ts `signIn`): an emailed code only. */
+const SIMPLE = site.signIn.mode === 'simple';
 import { MATRIX_PERSONAS, SIGN_UP_SITE, type MatrixPersonaKey, type MatrixPersonaName } from './personas';
 
 const ROOT = join(import.meta.dirname, '..', '..');
@@ -208,8 +216,13 @@ describe('auth matrix', () => {
       { path: '/sign-in', expect: PUBLIC },
       { path: '/signed-out', expect: PUBLIC },
       { path: '/account', expect: SIGNED_IN_PAGE },
-      { path: '/account/authenticator', expect: AUTHENTICATOR_PAGE },
-      { path: '/account/sign-in-method', expect: CHOOSER_PAGE },
+      // Full sign-in only (page.full.tsx): a Simple site has no passkeys or passwords to set up.
+      ...(SIMPLE
+        ? []
+        : [
+            { path: '/account/authenticator', expect: AUTHENTICATOR_PAGE },
+            { path: '/account/sign-in-method', expect: CHOOSER_PAGE },
+          ]),
       { path: '/app', expect: SIGNED_IN_PAGE },
       { path: '/app/projects', expect: SIGNED_IN_PAGE },
       { path: '/app/projects/:id', expect: PROJECT_PAGE },
@@ -256,7 +269,7 @@ describe('auth matrix', () => {
     const results = await assertAuthMatrix({
       request: (request) => fetch(request, { redirect: 'manual' }),
       baseUrl,
-      appRoutes: routesFromNextBuild(join(ROOT, '.next')),
+      appRoutes: routesFromNextBuild(join(ROOT, '.next'), { signIn: site.signIn }),
       personas: {
         anonymous: {},
         ...Object.fromEntries(personaNames.map((name) => [name, persona(name)])),
@@ -265,6 +278,8 @@ describe('auth matrix', () => {
       routes,
       // Sign-up sites: auth-kit requires newMember and holds it to a member's answers.
       signUpSite: SIGN_UP_SITE,
+      // Simple: codeOnlyMember is a member (auth-kit ADR 0029).
+      signIn: site.signIn,
     });
     // Every route × every persona (anonymous too) × 2 passes.
     expect(results.length).toBe(routes.length * (personaNames.length + 1) * 2);
@@ -347,7 +362,13 @@ describe('what the matrix rows can’t express', () => {
     expect((await response.json()) as { guardrail: string }).toMatchObject({ guardrail: 'last_manager' });
   });
 
-  it('an account with only emailed codes is sent to the chooser page, and refused by APIs (first credential required)', async () => {
+  it.skipIf(!SIMPLE)('Simple sign-in: an account with only emailed codes is a member, and there is no chooser page', async () => {
+    expect((await send('/app', { as: 'codeOnlyMember' })).status).toBe(200);
+    expect((await send('/api/projects', { as: 'codeOnlyMember' })).status).toBe(200);
+    expect((await send('/account/sign-in-method', { as: 'codeOnlyMember' })).status).toBe(404);
+  });
+
+  it.skipIf(SIMPLE)('an account with only emailed codes is sent to the chooser page, and refused by APIs (first credential required)', async () => {
     const page = await send('/app', { as: 'codeOnlyMember' });
     expect(page.status).toBe(307);
     expect(page.headers.get('location')).toMatch(/\/account\/sign-in-method$/);

@@ -8,6 +8,8 @@
 //                          where the family has none: personal sites send from sign-in@yokum.app)
 //   help mailbox           email.replyTo (null when it's the family's own mailbox; a person's own
 //                          address only acknowledged, { address, personal: true }: register E4c)
+//   sign-in mode           signIn ({ mode: 'full' } or { mode: 'simple', stay }: auth-kit ADR 0029),
+//                          and on Simple how long a sign-in lasts (every visit, 7 days, 30, or N)
 //   account creation       accountCreation (+ privacyNoticeUrl on sign-up sites)
 //   owner's email          ownerEmail, alertEmails, and inviteDomains (its domain) while that's the template's
 //   owner's name           ownerName (work families only: their help screens name the owner)
@@ -16,8 +18,8 @@
 //   the backdrop           backdrop ({ …, locked: true, chosen: 'owner' }), when the owner named one;
 //                          otherwise they choose it in the picker (npm run backdrop:pick) after setup
 //
-// The site's name, its address, its backdrop, how people get an account, and the owner are the
-// OWNER's decisions (OWNER_DECISIONS). Run by an agent (--yes), setup writes nothing until every one
+// The site's name, its address, its backdrop, how people sign in, how people get an account, and the
+// owner are the OWNER's decisions (OWNER_DECISIONS). Run by an agent (--yes), setup writes nothing until every one
 // is given and --owner-chose says the owner gave them; otherwise it prints the questions to ask.
 // Not asked: the card style (site.config.ts `cardStyle`, Quiet by default; register E5), the code
 // lifetime (10 minutes, register A7), and the site web ACL a sign-up site needs (`siteWaf`: it has to
@@ -33,6 +35,18 @@ export const OWNER_DECISIONS = [
   { key: 'name', flag: '--name', question: 'What is the site called? (It names the sign-in card, its emails, and the site.)' },
   { key: 'address', flag: '--address', question: 'What is its address? (For a personal site, <name>.yokum.app is the default. Passkeys are bound to it, so it is chosen now, before anyone signs in.)' },
   { key: 'backdrop', flag: '--backdrop', question: 'Which backdrop goes behind the sign-in card? (Show them the picker’s nine variations, from npm run backdrop:pick or its screenshots; they pick one, and its style:seed:version goes here.)' },
+  {
+    key: 'signIn',
+    flag: '--sign-in',
+    question:
+      'How do people sign in: "Full: code, passkey, password" (the default), or "Simple: code only" (an emailed code every time and nothing else, for small sites people visit a few times; the site is then as safe as its members’ inboxes)? Full can come later; Simple can’t once a site is Full.',
+  },
+  {
+    key: 'stay',
+    flag: '--stay',
+    onlyWhen: (given) => String(given.signIn ?? '').trim().toLowerCase() === 'simple',
+    question: 'On Simple: how long does a sign-in last on one device? Every visit (until the browser quits), 7 days, 30 days (the default), or another number of days.',
+  },
   { key: 'mode', flag: '--mode', question: 'How do people get an account: invite only, request (anyone asks, an admin approves), domains (listed domains sign up), or open?' },
   { key: 'ownerEmail', flag: '--owner-email', question: 'Whose email is the owner’s? (They get the first-visit invite once the site is live.)' },
 ];
@@ -43,7 +57,7 @@ export const OWNER_DECISIONS = [
  * @param {Record<string, unknown>} given
  */
 export function openOwnerQuestions(given) {
-  return OWNER_DECISIONS.filter((d) => given[d.key] === undefined || given[d.key] === null || String(given[d.key]).trim() === '');
+  return OWNER_DECISIONS.filter((d) => (d.onlyWhen === undefined || d.onlyWhen(given)) && (given[d.key] === undefined || given[d.key] === null || String(given[d.key]).trim() === ''));
 }
 
 const HOST_RE = /^(?=.{4,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/;
@@ -67,6 +81,21 @@ export function defaultAddress(family, project) {
 }
 
 export const MODES = ['invite', 'request', 'domains', 'open'];
+
+/** The two sign-in modes, named as auth-kit names them (SIGN_IN_MODE_LABEL). */
+export const SIGN_IN_MODES = ['full', 'simple'];
+export const SIGN_IN_MODE_LABEL = { full: 'Full: code, passkey, password', simple: 'Simple: code only' };
+
+/**
+ * A Simple stay as typed: "every visit" / "browser" / "every", or a whole number of days ("30", "30 days").
+ * @returns {'browser' | number | null} null when it isn't one
+ */
+export function parseStay(value) {
+  const v = String(value ?? '').trim().toLowerCase();
+  if (['browser', 'every visit', 'every-visit', 'every'].includes(v)) return 'browser';
+  const days = /^(\d+)(?:\s*days?)?$/.exec(v);
+  return days ? Number(days[1]) : null;
+}
 
 // The families come from site.families.ts (passed in as `context`), the one file that names them.
 
@@ -143,6 +172,27 @@ export function checkAnswers(raw, context) {
     accountCreation = { mode };
   }
 
+  // How people sign in (auth-kit ADR 0029). Simple is invite only (or request): a sign-up page asks for
+  // a passkey or a password. The stay is at most the tier's ceiling (30 days on Tier 2, 1 on Tier 3).
+  const signInMode = String(raw.signIn ?? 'full').trim().toLowerCase();
+  const tier = raw.tier === 3 ? 3 : 2;
+  const maxStay = tier === 3 ? 1 : 30;
+  let signIn = { mode: 'full' };
+  if (!SIGN_IN_MODES.includes(signInMode)) {
+    problems.push(`The sign-in mode must be full ("${SIGN_IN_MODE_LABEL.full}") or simple ("${SIGN_IN_MODE_LABEL.simple}").`);
+  } else if (signInMode === 'simple') {
+    const rawStay = raw.stay === undefined || raw.stay === null || String(raw.stay).trim() === '' ? String(Math.min(30, maxStay)) : raw.stay;
+    const stay = parseStay(rawStay);
+    if (stay === null || (stay !== 'browser' && (!Number.isInteger(stay) || stay < 1 || stay > maxStay))) {
+      problems.push(`How long a sign-in lasts must be "every visit" or ${maxStay === 1 ? '1 day (Tier 3 sign-ins last at most a day)' : `a whole number of days from 1 to ${maxStay}`}, not "${rawStay}".`);
+    } else {
+      signIn = { mode: 'simple', stay };
+    }
+    if (mode === 'domains' || mode === 'open') {
+      problems.push(`"${SIGN_IN_MODE_LABEL.simple}" is invite only (or request): a ${mode} site's sign-up page asks for a passkey or a password. Choose invite or request, or Full sign-in.`);
+    }
+  }
+
   const signUps = mode === 'domains' || mode === 'open';
   const privacy = raw.privacyNoticeUrl === undefined || raw.privacyNoticeUrl === null ? null : String(raw.privacyNoticeUrl).trim() || null;
   if (signUps && privacy === null) problems.push('A sign-up site links its privacy notice: give a site path (/privacy) or an https URL.');
@@ -181,6 +231,7 @@ export function checkAnswers(raw, context) {
       replyTo: helpPersonal ? { address: help, personal: true } : help && help === familyMailbox ? null : help,
       help,
       helpPersonal,
+      signIn,
       accountCreation,
       privacyNoticeUrl: privacy,
       ownerEmail,
@@ -196,6 +247,18 @@ export function helpSettingLiteral(setting) {
   if (setting === null) return 'null';
   if (typeof setting === 'object') return `{ address: ${tsString(setting.address)}, personal: true }`;
   return tsString(setting);
+}
+
+/** The TypeScript literal for a signIn value. */
+export function signInLiteral(setting) {
+  if (setting.mode !== 'simple') return "{ mode: 'full' }";
+  return `{ mode: 'simple', stay: ${setting.stay === 'browser' ? "'browser'" : String(setting.stay)} }`;
+}
+
+/** "Simple: code only, every visit" / "…, 30 days" / "Full: code, passkey, password". */
+export function describeSignIn(setting) {
+  if (setting.mode !== 'simple') return SIGN_IN_MODE_LABEL.full;
+  return `${SIGN_IN_MODE_LABEL.simple}, ${setting.stay === 'browser' ? 'every visit (until the browser quits)' : `${setting.stay} ${setting.stay === 1 ? 'day' : 'days'} on one device`}`;
 }
 
 /** The TypeScript literal for an accountCreation value. */
@@ -233,6 +296,7 @@ export function applyAnswers(text, a) {
   out = replaceConfigLine(out, '  ', 'ownerName', a.ownerName === null ? 'null' : tsString(a.ownerName), ' as string | null');
   out = replaceConfigLine(out, '    ', 'fromAddress', a.fromAddress === null ? 'null' : tsString(a.fromAddress), ' as string | null');
   out = replaceConfigLine(out, '    ', 'replyTo', helpSettingLiteral(a.replyTo), ' as SiteHelpAddress | null');
+  out = replaceConfigLine(out, '  ', 'signIn', signInLiteral(a.signIn), ' as SignInSettings');
   out = replaceConfigLine(out, '  ', 'accountCreation', accountCreationLiteral(a.accountCreation), ' as AccountCreationSettings');
   out = replaceConfigLine(out, '  ', 'privacyNoticeUrl', a.privacyNoticeUrl === null ? 'null' : tsString(a.privacyNoticeUrl), ' as string | null');
   out = replaceConfigLine(out, '  ', 'alertEmails', `[${tsString(a.ownerEmail)}]`, ' as readonly string[]');
@@ -259,6 +323,8 @@ export function describeAnswers(a) {
     `  family            ${a.family}`,
     `  sender            ${a.sender}${a.fromAddress === null ? '  (the family’s)' : '  (its domain must be verified in SES)'}`,
     `  help mailbox      ${a.help}${a.replyTo === null ? '  (the family’s)' : a.helpPersonal ? '  (a person’s own, on purpose)' : ''}`,
+    `  sign-in           ${describeSignIn(a.signIn)}`,
+    ...(a.signIn.mode === 'simple' ? ['                    (an emailed code is the only way in: the site is as safe as its members’ inboxes)'] : []),
     `  accounts          ${mode}`,
     ...(a.privacyNoticeUrl !== null ? [`  privacy notice    ${a.privacyNoticeUrl}`] : []),
     `  owner             ${a.ownerEmail}${a.ownerName ? ` (${a.ownerName})` : ''}`,

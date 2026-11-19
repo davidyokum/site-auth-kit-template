@@ -9,6 +9,9 @@
  * On request sites (site.config.ts `accountCreation`), a "Pending requests" tab with a badge: who
  * asked, in their own (untrusted) words, approve (the ordinary invite) or decline (silently), and
  * "Decline all shown" for a flood. A count that can't be read shows "—" and why, never zero.
+ *
+ * Under the invite form, "Add several at once": paste up to 50 addresses, all as Member or one app role
+ * (admin roles one at a time). Each gets the ordinary invite, audited one by one.
  */
 import { InviteForm, PeoplePageTabs, PeopleTable, PendingRequestsTable, RoleMatrixTable } from 'auth-kit/admin/ui';
 import { ResourceRolesSummary } from 'auth-kit/resources/ui';
@@ -26,6 +29,7 @@ import {
   disable,
   enable,
   invite,
+  inviteMany,
   resend,
   signOutEverywhere,
   transferOwnership,
@@ -49,7 +53,7 @@ export default async function PeoplePage() {
   const people = (
     <div className="stack">
       {manages ? (
-        <InviteForm action={invite} viewer={viewer} appRoles={site.appRoles} inviteDomains={site.inviteDomains} stepUpHref={reauth} {...itemAccess} />
+        <InviteForm action={invite} viewer={viewer} appRoles={site.appRoles} inviteDomains={site.inviteDomains} stepUpHref={reauth} inviteMany={inviteMany} signIn={site.signIn} {...itemAccess} />
       ) : (
         <details className="card">
           <summary>Compare roles</summary>

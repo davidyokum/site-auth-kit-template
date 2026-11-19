@@ -3,7 +3,8 @@
  * (next.config.ts), so these are the messages people see.
  */
 import { describe, expect, it } from 'vitest';
-import { type CheckedSite, assertSiteConfig, requiredPrivacyNotice, siteConfigProblems } from '@/lib/site-checks';
+import { normalizeSignIn } from 'auth-kit/client';
+import { type CheckedSite, assertSiteConfig, requiredPrivacyNotice, signInProblems, siteConfigProblems } from '@/lib/site-checks';
 import { site } from '@/site.config';
 
 const base: CheckedSite = {
@@ -19,6 +20,28 @@ const base: CheckedSite = {
 const waf = { webAclArn: 'arn:aws:wafv2:us-east-1:111122223333:global/webacl/auth-kit-site-routes/00000000-0000-4000-8000-000000000000', integrationUrl: 'https://abcd1234.edge.sdk.awswaf.com/abcd1234/efgh5678/challenge.js' };
 
 describe('site.config.ts checks (lib/site-checks.ts)', () => {
+  it('checks the sign-in mode as auth-kit does, and keeps Simple off sign-up sites (ADR 0029)', () => {
+    const invite = { mode: 'invite' as const };
+    const cases: [CheckedSite['signIn'], 2 | 3][] = [
+      [undefined, 2], [{ mode: 'full' }, 2], [{ mode: 'simple' }, 2], [{ mode: 'simple', stay: 'browser' }, 2], [{ mode: 'simple', stay: 30 }, 2],
+      [{ mode: 'simple', stay: 1 }, 3], [{ mode: 'simple', stay: 7 }, 3], [{ mode: 'simple', stay: 31 }, 2], [{ mode: 'simple', stay: 0 }, 2],
+      [{ mode: 'simple', stay: 2.5 }, 2], [{ mode: 'simple', stay: '30' }, 2], [{ mode: 'code' }, 2], [{ mode: 'full', stay: 7 }, 2],
+    ];
+    // Agrees with auth-kit's own check on every case: a problem here exactly when normalizeSignIn throws.
+    for (const [signIn, tier] of cases) {
+      let kitRefuses = false;
+      try {
+        normalizeSignIn(signIn as never, tier);
+      } catch {
+        kitRefuses = true;
+      }
+      expect(signInProblems(signIn, tier, invite).length > 0, JSON.stringify([signIn, tier])).toBe(kitRefuses);
+    }
+    expect(signInProblems({ mode: 'simple' }, 2, { mode: 'open' }).join(' ')).toMatch(/invite only \(or request\)/);
+    expect(signInProblems({ mode: 'simple' }, 2, { mode: 'request' })).toEqual([]);
+    expect(siteConfigProblems({ ...base, signIn: { mode: 'simple', stay: 31 } }).join(' ')).toMatch(/signIn.stay must be 'browser' or a whole number of days from 1 to 30, not 31/);
+  });
+
   it('pass for this site', () => {
     expect(siteConfigProblems(site)).toEqual([]);
     expect(() => assertSiteConfig(site)).not.toThrow();

@@ -9,9 +9,10 @@
  */
 import { configureAuthClient } from 'auth-kit/client';
 import { amplifyOutputs } from '@/lib/outputs';
-import { refreshTokenMinutes } from '@/lib/session';
+import { browserSessionCookies, refreshTokenMinutes } from '@/lib/session';
 
-configureAuthClient(amplifyOutputs, { refreshTokenMinutes });
+// Simple with stay: 'browser' (every visit): cookies that end when the browser quits (auth-kit ADR 0029).
+configureAuthClient(amplifyOutputs, { refreshTokenMinutes, ...(browserSessionCookies && { cookies: 'browser' as const }) });
 
 export function AmplifyClient() {
   return null;

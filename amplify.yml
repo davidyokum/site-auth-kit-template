@@ -9,6 +9,8 @@ backend:
     build:
       commands:
         - npm ci
+        # A Full site can't be turned Simple (auth-kit ADR 0029): stop before the pool changes.
+        - node scripts/check-sign-in-mode.mjs
         - npx ampx pipeline-deploy --branch $AWS_BRANCH --app-id $AWS_APP_ID
 frontend:
   phases:
