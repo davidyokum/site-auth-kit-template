@@ -72,6 +72,16 @@ code {
   background: var(--surface);
 }
 
+/*
+ * Sign-in screens have no site chrome: the backdrop and auth-kit's card are the whole page. On
+ * /sign-in, /signed-out, /account/sign-in-method, /account/authenticator (and every other AuthScene
+ * page) the header's links would only bounce back to the same screen, and its "Sign in" reads as
+ * signed out to someone halfway through setting up.
+ */
+body:has(.auth-scene) > .site-header {
+  display: none;
+}
+
 .site-header-inner {
   max-width: 960px;
   margin: 0 auto;
