@@ -1,9 +1,9 @@
 /**
  * Sign in (always public). auth-kit's `SignIn` is the whole card, in the approved words (ADR 0024):
- * email first, then "Use your passkey" (or, before passkeys are on, "Enter your password"), with "Use
- * a password instead" and "Email me a code instead" always offered; "Trouble signing in?" and its
- * help screens; the line saying how this site gives out accounts (`accountCreation`); and the family's
- * footer. It handles every step these pools return, then sends a password user without an
+ * email first, then "Use your passkey" where this browser remembers one, otherwise "How do you want to
+ * sign in?" (or, before passkeys are on, "Enter your password"), with "Use a password instead" and
+ * "Email me a code instead" always offered and Back on every later screen; "Help" and its help screens;
+ * the line saying how this site gives out accounts (`accountCreation`); and the family's footer. It handles every step these pools return, then sends a password user without an
  * authenticator to set one up, requires the first credential after an invite or a sign-up, and
  * returns through `safeRedirect` (same-site paths only). `?reauth=1` is step-up; `?first=1` (an
  * invite's link) is a first visit, so the card leads with "Email me a code". On a Simple site
