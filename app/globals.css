@@ -558,20 +558,21 @@ main:has(> .akp) {
 
 /* The card's top stays put from step to step (auth-kit 0.1.18): later sign-in screens are taller, so
  * they grow down, never up over a backdrop's name above the card. The space above centers the email
- * card (about 450px tall) on a tall window. auth-kit's README: "Lay the scene out so the card's top
- * stays put". */
+ * card (about 450px tall) on a tall window. A backdrop that letters the site's name above the card
+ * (Yokum magnetic v2, auth-kit 0.1.19) sets --ak-backdrop-name-room, and both paddings leave it that
+ * room. auth-kit's README: "Lay the scene out so the card's top stays put". */
 .auth-scene-content {
   flex: 1 0 auto;
   display: grid;
   justify-items: center;
   align-items: start;
-  padding: max(56px, calc((100vh - 450px) / 2)) var(--gutter) 72px;
-  padding: max(56px, calc((100dvh - 450px) / 2)) var(--gutter) 72px;
+  padding: max(calc(56px + var(--ak-backdrop-name-room, 0px)), calc((100vh - 450px) / 2)) var(--gutter) 72px;
+  padding: max(calc(56px + var(--ak-backdrop-name-room, 0px)), calc((100dvh - 450px) / 2)) var(--gutter) 72px;
 }
 
 @media (max-width: 480px) {
   .auth-scene-content {
-    padding: 24px var(--gutter) 40px;
+    padding: calc(24px + var(--ak-backdrop-name-room, 0px)) var(--gutter) 40px;
   }
 }
 
