@@ -378,6 +378,21 @@ describe('what the matrix rows can’t express', () => {
     expect((await send('/account/sign-in-method', { as: 'codeOnlyMember' })).status).toBe(200);
   });
 
+  it('the setup pages are sign-in screens: the card on the backdrop, and the header the stylesheet hides there', async () => {
+    // A password user without an authenticator: the setup page, in auth-kit's card on the backdrop.
+    const setup = await send('/account/authenticator', { as: 'noAuthenticator' });
+    expect(setup.status).toBe(200);
+    const setupHtml = await setup.text();
+    expect(setupHtml).toMatch(/class="[^"]*\bauth-scene\b/);
+    expect(setupHtml).toContain('data-auth-kit="authenticator-setup"');
+    // The chooser for an account with only emailed codes, the same way.
+    const chooser = await send('/account/sign-in-method', { as: 'codeOnlyMember' });
+    expect(chooser.status).toBe(200);
+    expect(await chooser.text()).toMatch(/class="[^"]*\bauth-scene\b/);
+    // The header is still rendered (the layout's), so the stylesheet is what keeps it off these pages.
+    expect(setupHtml).toContain('class="site-header"');
+  });
+
   it('a state change from another origin is refused (403 origin_mismatch)', async () => {
     const response = await send('/api/projects', {
       as: 'admin',
