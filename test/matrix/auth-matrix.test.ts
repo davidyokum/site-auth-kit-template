@@ -379,6 +379,12 @@ describe('what the matrix rows can’t express', () => {
   });
 
   it('the setup pages are sign-in screens: the card on the backdrop, and the header the stylesheet hides there', async () => {
+    if (SIMPLE) {
+      // A Simple site builds neither setup page (page.full.tsx, auth-kit ADR 0029): there's nothing to set up.
+      expect((await send('/account/authenticator', { as: 'member' })).status).toBe(404);
+      expect((await send('/account/sign-in-method', { as: 'member' })).status).toBe(404);
+      return;
+    }
     // A password user without an authenticator: the setup page, in auth-kit's card on the backdrop.
     const setup = await send('/account/authenticator', { as: 'noAuthenticator' });
     expect(setup.status).toBe(200);
