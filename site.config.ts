@@ -10,11 +10,12 @@
  * an AWS account ID, or a pool ID here. Where to deploy lives in `deploy.config.json`.
  *
  * `npm run setup` rewrites single lines of this file (name, project, family, email.fromAddress,
- * email.replyTo, accountCreation, ownerEmail, alertEmails), and `npm run backdrop:pick` the
+ * email.replyTo, signIn, accountCreation, ownerEmail, alertEmails), and `npm run backdrop:pick` the
  * `backdrop` line: keep each of those on one line in the form it has here.
  */
 import type { AccountCreationSettings } from 'auth-kit/accounts';
 import type { BackdropStyleId } from 'auth-kit/backdrops';
+import type { SignInSettings } from 'auth-kit/client';
 import type { CardStyle } from 'auth-kit/themes';
 import type { SiteFamily, SiteHelpAddress } from './site.families';
 
@@ -141,6 +142,26 @@ export const site = {
     fromAddress: null as string | null,
     replyTo: null as SiteHelpAddress | null,
   },
+
+  /**
+   * How people sign in (auth-kit ADR 0029). The owner's choice: `npm run setup` asks it.
+   *
+   *   { mode: 'full' }  "Full: code, passkey, password" (the default). A passkey, a password plus an
+   *       authenticator app, or an emailed code; after their first code, everyone chooses a passkey or a
+   *       password (/account/sign-in-method).
+   *
+   *   { mode: 'simple', stay: 30 }  "Simple: code only". An emailed code every time, and nothing else:
+   *       no passkeys, no passwords, no authenticator apps. For small sites whose members sign in a
+   *       handful of times; the site is only as safe as its members' inboxes. `stay` is how long a
+   *       sign-in lasts on one device: 'browser' (every visit: until the browser quits, 12 hours at
+   *       most) or a number of days (1 to 30 on Tier 2; 1 on Tier 3). Invite only, or request:
+   *       'domains' and 'open' sign-up ask for a passkey or a password, so they can't be Simple.
+   *
+   * Simple can become Full later (change it and deploy: every account stays, and each person's next
+   * sign-in asks for a passkey or a password). Full can't become Simple: an account with an
+   * authenticator app can't get emailed codes. Keep it on one line; `npm run setup` rewrites it.
+   */
+  signIn: { mode: 'full' } as SignInSettings,
 
   /**
    * How people get an account (register D1; auth-kit ADR 0023). Cognito's own sign-up stays off in

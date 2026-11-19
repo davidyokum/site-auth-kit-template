@@ -31,13 +31,15 @@ import {
   renderInviteEmail,
 } from 'auth-kit/admin';
 import { helpAddressOf, type SignInHelpSource } from 'auth-kit/accounts';
+import type { SignInSettings } from 'auth-kit/client';
 import { type AuthTheme, siteSender } from 'auth-kit/themes';
 import { site as configuredSite } from '@/site.config';
 import { type FamilySite, senderAddressFor } from '@/site.families';
 import { type ThemeSite, siteTheme } from './theme';
 
 /** What these helpers read from site.config.ts (tests pass their own). */
-export type MailSite = ThemeSite & FamilySite;
+/** `signIn`: Full or Simple (site.config.ts), for the invite's last step. */
+export type MailSite = ThemeSite & FamilySite & { signIn?: SignInSettings };
 
 /**
  * The From header: the site's `sign-in@` mailbox (its own, else its family's) under the family's
@@ -101,7 +103,8 @@ export function createSiteMailer(options: SiteMailerOptions, site: MailSite = co
       client,
       replyTo: [helpEmail],
       // The site, for the alerts' layout and footer (auth-kit lays each one out like the card).
-      site: { siteName: site.name, theme, help: helpEmail, signInUrl: options.signInUrl },
+      // `signIn`: a Simple site's invite says the emailed code is all there is (auth-kit ADR 0029).
+      site: { siteName: site.name, theme, help: helpEmail, signInUrl: options.signInUrl, ...(site.signIn !== undefined && { signIn: site.signIn }) },
       // People actions pass the theme and help address; a Manager's invite (auth-kit/resources) doesn't.
       render: (input) => renderInviteEmail({ ...input, theme: input.theme ?? theme, helpEmail: input.helpEmail ?? helpEmail }),
     });

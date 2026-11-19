@@ -49,3 +49,19 @@ export function hasAccountCreationRoutes(setting: AccountCreationLike): boolean 
 export function accountCreationPageExtensions(setting: AccountCreationLike): string[] {
   return [...(takesSignUps(setting) ? ['signup.tsx', 'signup.ts'] : []), ...(takesRequests(setting) ? ['request.tsx', 'request.ts'] : [])];
 }
+
+/** The sign-in setting as next.config.ts reads it (site.config.ts `signIn`; auth-kit ADR 0029). */
+export interface SignInLike {
+  readonly mode: 'full' | 'simple';
+}
+
+/**
+ * The page extensions Full sign-in switches on: `page.full.tsx` exists only on Full sites. Those are
+ * the pages for passkeys and passwords: "Choose how you'll sign in" (/account/sign-in-method, the
+ * required first credential) and the authenticator setup (/account/authenticator). A Simple site
+ * (an emailed code only) has neither: nobody is ever sent there, so they aren't routes at all.
+ */
+export function signInPageExtensions(setting: SignInLike): string[] {
+  return setting.mode === 'full' ? ['full.tsx', 'full.ts'] : [];
+}
+

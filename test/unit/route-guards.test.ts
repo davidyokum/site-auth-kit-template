@@ -48,13 +48,14 @@ const GUARD =
 
 /**
  * Page and route files, including the account-creation ones that exist only in their mode
- * (`page.signup.tsx`, `route.request.ts`; next.config.ts, lib/account-modes.ts).
+ * (`page.signup.tsx`, `route.request.ts`), and the Full sign-in ones (`page.full.tsx`; next.config.ts,
+ * lib/account-modes.ts).
  */
-const PAGE_FILE = /\/page(?:\.(?:signup|request))?\.tsx$/;
+const PAGE_FILE = /\/page(?:\.(?:signup|request|full))?\.tsx$/;
 const ROUTE_FILE = /\/route(?:\.(?:signup|request))?\.ts$/;
 
 /** The URL path a page file serves, e.g. app/app/projects/[id]/page.tsx → /app/projects/[id]. */
-const urlOf = (file: string) => `/${file.replace(/^app\//, '').replace(/\/?page(?:\.(?:signup|request))?\.tsx$/, '')}`.replace(/\/$/, '') || '/';
+const urlOf = (file: string) => `/${file.replace(/^app\//, '').replace(/\/?page(?:\.(?:signup|request|full))?\.tsx$/, '')}`.replace(/\/$/, '') || '/';
 /** The URL path a route file serves. */
 const routeUrlOf = (file: string) => `/${file.replace(/^app\//, '').replace(/\/route(?:\.(?:signup|request))?\.ts$/, '')}`;
 /** The account-creation routes: public by design, they answer every address alike (auth-kit ADR 0023). */
@@ -109,6 +110,12 @@ describe('every page, layout, route, and action checks on the server', () => {
       // Public only on sites whose mode has the route (it isn't a route anywhere else).
       expect(PUBLIC_ROUTES.includes(url)).toBe(PUBLIC_ACCOUNT_ROUTES.includes(url));
     }
+  });
+
+  it('the passkey and password pages exist only on Full sign-in sites (page.full.tsx; auth-kit ADR 0029)', () => {
+    const fullOnly = appFiles.filter((f) => /\.full\.tsx?$/.test(f)).sort();
+    expect(fullOnly).toEqual(['app/account/authenticator/page.full.tsx', 'app/account/sign-in-method/page.full.tsx']);
+    expect(appFiles.filter((f) => /^app\/account\/(?:authenticator|sign-in-method)\/page\.tsx$/.test(f))).toEqual([]);
   });
 
   it('every exported server action calls a guard', () => {

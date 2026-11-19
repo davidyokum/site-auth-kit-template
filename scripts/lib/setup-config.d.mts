@@ -1,4 +1,10 @@
 export declare const MODES: string[];
+export declare const SIGN_IN_MODES: string[];
+export declare const SIGN_IN_MODE_LABEL: { full: string; simple: string };
+export type SetupSignIn = { mode: 'full' } | { mode: 'simple'; stay: 'browser' | number };
+export declare function parseStay(value: unknown): 'browser' | number | null;
+export declare function signInLiteral(setting: SetupSignIn): string;
+export declare function describeSignIn(setting: SetupSignIn): string;
 export interface SetupContext {
   familyHelpMailbox: Record<string, string | null>;
   familySender: Record<string, string | null>;
@@ -11,6 +17,12 @@ export interface SetupAnswersInput {
   sender?: string;
   help?: string;
   helpPersonal?: boolean;
+  /** 'full' (the default) or 'simple' (auth-kit ADR 0029). */
+  signIn?: string;
+  /** On Simple: 'every visit' / 'browser', or a number of days (default 30). */
+  stay?: string | number;
+  /** site.config.ts `tier` (the stay's ceiling: 30 days on Tier 2, 1 on Tier 3). Default 2. */
+  tier?: 2 | 3;
   mode?: string;
   domains?: string[] | string;
   requestsAlso?: boolean;
@@ -32,6 +44,7 @@ export interface SetupAnswers {
   replyTo: string | { address: string; personal: true } | null;
   help: string;
   helpPersonal: boolean;
+  signIn: SetupSignIn;
   accountCreation: { mode: string; domains?: string[]; requestsAlso?: boolean };
   privacyNoticeUrl: string | null;
   ownerEmail: string;
@@ -40,9 +53,11 @@ export interface SetupAnswers {
   backdrop: { style: string; seed: string; styleVersion: number } | null;
 }
 export interface OwnerDecision {
-  key: 'name' | 'address' | 'backdrop' | 'mode' | 'ownerEmail';
+  key: 'name' | 'address' | 'backdrop' | 'signIn' | 'stay' | 'mode' | 'ownerEmail';
   flag: string;
   question: string;
+  /** Asked only when this holds (the stay: only on Simple). */
+  onlyWhen?: (given: Record<string, unknown>) => boolean;
 }
 export declare const OWNER_DECISIONS: readonly OwnerDecision[];
 export declare function openOwnerQuestions(given: Record<string, unknown>): OwnerDecision[];

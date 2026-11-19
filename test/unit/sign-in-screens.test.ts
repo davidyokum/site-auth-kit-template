@@ -19,7 +19,8 @@ describe('sign-in screens', () => {
   });
 
   it('every page that renders a sign-in card renders it inside AuthScene', () => {
-    for (const page of ['app/sign-in/page.tsx', 'app/signed-out/page.tsx', 'app/account/sign-in-method/page.tsx', 'app/account/authenticator/page.tsx']) {
+    // The two account pages are Full-only (page.full.tsx, auth-kit ADR 0029).
+    for (const page of ['app/sign-in/page.tsx', 'app/signed-out/page.tsx', 'app/account/sign-in-method/page.full.tsx', 'app/account/authenticator/page.full.tsx']) {
       expect(read(page), page).toContain('<AuthScene>');
     }
   });

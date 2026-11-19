@@ -6,7 +6,8 @@
  * the line saying how this site gives out accounts (`accountCreation`); and the family's footer. It handles every step these pools return, then sends a password user without an
  * authenticator to set one up, requires the first credential after an invite or a sign-up, and
  * returns through `safeRedirect` (same-site paths only). `?reauth=1` is step-up; `?first=1` (an
- * invite's link) is a first visit, so the card leads with "Email me a code".
+ * invite's link) is a first visit, so the card leads with "Email me a code". On a Simple site
+ * (site.config.ts `signIn`) "Email me a code" is the only way in, every time.
  *
  * The help address is read here, on the server, on every request, so a Super admin's override
  * (Admin → Settings → "Sign-in help") shows at once. The card sits on the site's backdrop.
@@ -33,6 +34,8 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
         theme={siteTheme(site)}
         help={signInHelpProp(site, help.address)}
         passkeysEnabled={site.passkeys !== false}
+        // Full, or Simple: an emailed code only, with no other way in offered (auth-kit ADR 0029).
+        signIn={site.signIn}
         {...(passkey && { passkey })}
         accountCreation={site.accountCreation}
         codeLifetimeMinutes={site.codeLifetimeMinutes}

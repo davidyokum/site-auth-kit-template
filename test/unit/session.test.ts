@@ -1,7 +1,7 @@
-import { normalizeOptions, SESSION_POLICY } from 'auth-kit/amplify';
+import { normalizeOptions, normalizeSignIn, SESSION_POLICY, signInSession } from 'auth-kit/amplify';
 import { describe, expect, it } from 'vitest';
 import { authOptions } from '@/amplify/auth/resource';
-import { refreshTokenMinutes } from '@/lib/session';
+import { browserSessionCookies, refreshTokenMinutes, simpleSignIn } from '@/lib/session';
 import { site } from '@/site.config';
 import { helpAddressFor, senderAddressFor } from '@/site.families';
 
@@ -19,6 +19,12 @@ describe('the pool settings (amplify/auth/resource.ts) and the app agree', () =>
   it('token cookies expire with the refresh token the pool actually issues', () => {
     expect(refreshTokenMinutes).toBe(pool.refreshTokenMinutes);
     expect(refreshTokenMinutes).toBeLessThanOrEqual(SESSION_POLICY.refreshTokenMinutesMax[pool.tier]);
+  });
+
+  it('the sign-in mode and its session length are the ones auth-kit computes (ADR 0029)', () => {
+    expect(pool.signIn).toEqual(normalizeSignIn(site.signIn, site.tier));
+    expect({ refreshTokenMinutes, browserOnly: browserSessionCookies }).toEqual(signInSession(site.signIn, site.tier));
+    expect(simpleSignIn).toBe(pool.signIn.mode === 'simple');
   });
 
   it('rate-limits sign-in (WAF is on unless deliberately acknowledged off)', () => {

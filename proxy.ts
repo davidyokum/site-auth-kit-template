@@ -20,6 +20,7 @@ import { auth } from '@/lib/auth';
 import { outputs } from '@/lib/outputs';
 import { PUBLIC_ROUTES } from '@/lib/public-routes';
 import { contentSecurityPolicy } from '@/lib/security-headers';
+import { browserSessionCookies } from '@/lib/session';
 import { site } from '@/site.config';
 
 const dev = process.env.NODE_ENV === 'development';
@@ -27,7 +28,8 @@ const dev = process.env.NODE_ENV === 'development';
 export const proxy = withAuthProxy({
   auth,
   publicRoutes: PUBLIC_ROUTES,
-  refresh: amplifyAdapterRefresh({ runWithAmplifyServerContext, fetchAuthSession }),
+  // Simple with stay: 'browser': refreshed cookies keep ending with the browser (auth-kit ADR 0029).
+  refresh: amplifyAdapterRefresh({ runWithAmplifyServerContext, fetchAuthSession }, browserSessionCookies ? { cookies: 'browser' } : {}),
   headers: nonceCspHeaders((nonce) => contentSecurityPolicy({ nonce, dev, region: outputs.auth.aws_region, wafIntegrationUrl: site.siteWaf?.integrationUrl ?? null })),
 });
 

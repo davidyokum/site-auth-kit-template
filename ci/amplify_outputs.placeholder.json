@@ -1,5 +1,5 @@
 {
-  "_comment": "PLACEHOLDER. Not a real user pool: every ID below is fake and nothing can sign in with it. CI copies this file to amplify_outputs.json so `next build`, the type checks, and the auth-matrix tests run without AWS. On your machine, `npm run sandbox` writes the real file (git-ignored); on Amplify Hosting the branch pipeline writes it during the build. See README, 'amplify_outputs.json'.",
+  "_comment": "PLACEHOLDER. Not a real user pool: every ID below is fake and nothing can sign in with it. CI copies this file to amplify_outputs.json so `next build`, the type checks, and the auth-matrix tests run without AWS. On your machine, `npm run sandbox` writes the real file (git-ignored); on Amplify Hosting the branch pipeline writes it during the build. See README, 'amplify_outputs.json'. It has no mfa_configuration, so it says nothing about the sign-in mode and serves a Full or a Simple site alike (auth-kit ADR 0029).",
   "version": "1.4",
   "auth": {
     "aws_region": "us-east-1",
@@ -11,7 +11,6 @@
     "username_attributes": ["email"],
     "user_verification_types": ["email"],
     "groups": [{ "owner": { "precedence": 0 } }, { "superadmin": { "precedence": 1 } }, { "admin-content-people": { "precedence": 2 } }, { "admin-content": { "precedence": 3 } }, { "admin-view": { "precedence": 4 } }],
-    "mfa_configuration": "OPTIONAL",
     "password_policy": {
       "min_length": 15,
       "require_lowercase": false,

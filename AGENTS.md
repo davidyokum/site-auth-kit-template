@@ -11,6 +11,8 @@ enforces it; this file says how to work inside it.
 Fill in when the site is created (03 §2 Assurance: tier, pool, and account are recorded here).
 
 - **Tier:** 2 (named people). See `site.config.ts`.
+- **Sign-in mode:** `site.config.ts` `signIn` ("Full: code, passkey, password", the template's, or
+  "Simple: code only" with its `stay`; auth-kit ADR 0029).
 - **Account creation:** `site.config.ts` `accountCreation` (the template: invite only).
 - **Sender and help address:** `site.config.ts` `email.fromAddress` and `email.replyTo` (null: the family's
   `sign-in@` mailbox and help mailbox in `site.families.ts`; personal: sign-in@yokum.app, help@yokum.app).
@@ -79,9 +81,14 @@ Fill in when the site is created (03 §2 Assurance: tier, pool, and account are 
     (request sites); `next.config.ts` makes them routes only there, `lib/public-routes.ts` lists them
     only there, and the matrix adds their rows. Use `lib/account-modes.ts` for "does this site take
     sign-ups / requests", never `mode === '…'` checks of your own. Cognito's own sign-up stays off.
-15. **The first credential is required.** After an invite's or a sign-up's first emailed code, people
-    must choose a passkey or a password plus authenticator (`/account/sign-in-method`). Only that page
-    passes `allowFirstCredentialEnrollment`; don't add it anywhere else, and don't offer a "Not now".
+15. **The first credential is required on Full sites.** After an invite's or a sign-up's first emailed
+    code, people must choose a passkey or a password plus authenticator (`/account/sign-in-method`).
+    Only that page passes `allowFirstCredentialEnrollment`; don't add it anywhere else, and don't offer
+    a "Not now". A Simple site ("Simple: code only", `site.signIn`, auth-kit ADR 0029) has no such step
+    and no such page: pages only Full sites have are `page.full.tsx`, like rule 14's. Pass `site.signIn`
+    wherever auth-kit takes `signIn`, never a value of your own; `lib/session.ts` says how long a
+    sign-in lasts. Simple moves to Full by changing the setting and deploying; Full never moves to
+    Simple (the build's `scripts/check-sign-in-mode.mjs` stops it), and the mode is the owner's call.
 16. **The sign-in card is auth-kit's.** Render `SignIn`, `SignUp`, `RequestAccess`,
     `SignedOutEverywhere`, or `AuthCard` with the site's theme (`lib/theme.ts`) inside `AuthScene`;
     don't wrap them in a card of your own, add words above the heading, or restyle their slots beyond
@@ -102,7 +109,8 @@ Fill in when the site is created (03 §2 Assurance: tier, pool, and account are 
     the owner says the site is alone in its account. Sign-up sites also need `siteWaf` (register D3).
 
 20. **The site's owner makes the owner's decisions; you put them to the owner.** The site's name, its
-   address, its backdrop, how people get an account, and who the owner is are theirs (auth-kit ADR
+   address, its backdrop, how people sign in (and on Simple, how long a sign-in lasts), how people get
+   an account, and who the owner is are theirs (auth-kit ADR
    0028). Never answer them yourself, never pass `--owner-chose` for an answer they didn't give, and
    never press the picker's "Use this one" for them. `npm run setup -- … --yes` prints the questions
    when any is missing: ask them all on one card. Show `npm run deploy`'s plan to the owner once
