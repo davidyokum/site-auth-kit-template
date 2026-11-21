@@ -127,7 +127,8 @@ npm run test:matrix      # after `npm run build`
 npm run setup            # a new site → site.config.ts; the owner's answers (name, address, backdrop, accounts, owner) come from the owner
 npm run backdrop:pick    # the owner picks the backdrop (Use this one); backdrop:set -- <style>:<seed>:<version> --owner-chose
 npm run deploy           # prints the plan; show the owner, then: npm run deploy -- --yes (repo, app, build, address, owner invite)
-npx auth-kit upgrade <v> # a new auth-kit: only its lockfile lines, checked with Amplify's npm
+npx auth-kit upgrade <v> # a new auth-kit by hand: only its lockfile lines, checked with Amplify's npm
+                         # (Renovate opens a PR for each release; README, "Upgrading auth-kit")
 npm run sandbox          # your own sandbox backend (account-checked; ask before deploying)
 npm run personas:seed    # seed personas into the sandbox (account-checked)
 npm run projects:seed    # the sample project's Manager, Contributor, Reader roles (sandbox only)
@@ -167,13 +168,19 @@ npm run waf:smoke -- --url https://<site>   # open sign-up sites, after every de
   `/admin/settings` Super admins and the owner (README, "Roles", "The sender and the help address");
   `app/api/auth-kit/account-notice` the account-change notices (signed-in accounts)
 - `scripts/` local tools: `setup.mjs`, `seed-sample-project.mjs`, `waf-smoke-test.mjs`, the preflight,
-  the backdrop picker's; never shipped
+  the backdrop picker's; never shipped. `kit-upgrade-ci.mjs` (rules in `lib/kit-upgrade.mjs`) runs only
+  in the "auth-kit upgrade" workflow
+- `renovate.json` and `renovate/auth-kit.json` Renovate, for auth-kit only; `.github/workflows/kit-upgrade.yml`
+  finishes its PRs (the kit's lockfile lines, the checks, the `auth-kit/auto-merge` status; auth-kit ADR 0030)
 - `test/unit/` unit and static checks; `test/matrix/` the auth matrix
 
 ## Git
 
 Commit early and often. While the site isn't live, commit to `main`. Once it's deployed, work on a
-branch: merging to `main` deploys the live site, so only the owner merges.
+branch: merging to `main` deploys the live site, so only the owner merges. The one exception is the
+owner's standing choice: Renovate merges an auth-kit patch PR whose `auth-kit/auto-merge` status is
+green (a patch with no site steps) once every check passes. Don't edit `renovate/auth-kit.json`'s
+automerge rules, the workflow's gate, or `scripts/lib/kit-upgrade.mjs` without the owner.
 
 <!-- BEGIN:nextjs-agent-rules -->
 

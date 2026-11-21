@@ -1,5 +1,6 @@
 # Weekly update PRs for npm packages and the pinned GitHub Actions. Dependabot can't update auth-kit:
-# it's installed from a release tarball URL. Bump that by hand (README, "Upgrading auth-kit").
+# it's installed from a release tarball URL. Renovate does, and only that (renovate/auth-kit.json and
+# the "auth-kit upgrade" workflow; README, "Upgrading auth-kit").
 version: 2
 updates:
   - package-ecosystem: npm

@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # The "auth-kit upgrade" workflow starts CI on the commit where it writes a Renovate PR's lockfile lines
+  # (its own push starts nothing).
+  workflow_dispatch:
   # Weekly, so a newer auth-kit shows up here even when nothing else changes.
   schedule:
     - cron: '17 9 * * 1'

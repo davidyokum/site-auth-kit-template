@@ -1,0 +1,63 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": [
+    "auth-kit upgrades by pull request, for every site made from site-auth-kit-template (auth-kit ADR 0030).",
+    "Renovate watches only auth-kit: every other dependency stays with Dependabot or by hand.",
+    "Renovate changes only package.json's tarball URL; the site's 'auth-kit upgrade' workflow (.github/workflows/kit-upgrade.yml) writes the lockfile lines with the release's own `auth-kit upgrade`, never `npm install`.",
+    "Patch releases that say 'Site steps: none' merge on their own once every check passes; minor and major releases, and any release with site steps, wait for the owner."
+  ],
+  "enabledManagers": ["custom.regex"],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "auth-kit's release tarball URL in package.json (Renovate's npm manager skips URL dependencies)",
+      "managerFilePatterns": ["/(^|/)package\\.json$/"],
+      "matchStrings": [
+        "\"auth-kit\":\\s*\"https://github\\.com/davidyokum/auth-kit/releases/download/v(?<currentValue>[0-9][^/\"]*)/auth-kit-[0-9][^/\"]*\\.tgz\""
+      ],
+      "autoReplaceStringTemplate": "\"auth-kit\": \"https://github.com/davidyokum/auth-kit/releases/download/v{{{newValue}}}/auth-kit-{{{newValue}}}.tgz\"",
+      "depNameTemplate": "auth-kit",
+      "packageNameTemplate": "davidyokum/auth-kit",
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "npm",
+      "extractVersionTemplate": "^v(?<version>.+)$"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "auth-kit ships as pre-releases (0.1.20-alpha.1), so they count; patch and minor get their own PRs.",
+      "matchDepNames": ["auth-kit"],
+      "ignoreUnstable": false,
+      "separateMinorPatch": true,
+      "labels": ["auth-kit"],
+      "commitMessageTopic": "auth-kit",
+      "automerge": false,
+      "prBodyNotes": [
+        "**How this PR finishes:** Renovate changed only `package.json`. The **auth-kit upgrade** check writes the kit's lockfile lines with this release's own `auth-kit upgrade` (after checking the tarball's attestation), then runs CI on that commit. Its `auth-kit/auto-merge` status is green only for a patch release whose notes say `Site steps: none`; then Renovate squash-merges once every check passes. Anything else waits for the owner: read the release notes below, do the site steps, and merge."
+      ]
+    },
+    {
+      "description": "Patch releases merge on their own, but only once every check is green, including auth-kit/auto-merge.",
+      "matchDepNames": ["auth-kit"],
+      "matchUpdateTypes": ["patch"],
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": false,
+      "automergeStrategy": "squash"
+    },
+    {
+      "description": "Minor and major releases always wait for the owner.",
+      "matchDepNames": ["auth-kit"],
+      "matchUpdateTypes": ["minor", "major"],
+      "automerge": false,
+      "labels": ["auth-kit", "needs owner"]
+    }
+  ],
+  "gitIgnoredAuthors": ["41898282+github-actions[bot]@users.noreply.github.com"],
+  "dependencyDashboard": false,
+  "rebaseWhen": "behind-base-branch",
+  "prHourlyLimit": 0,
+  "prConcurrentLimit": 0,
+  "branchConcurrentLimit": 0,
+  "schedule": ["at any time"]
+}

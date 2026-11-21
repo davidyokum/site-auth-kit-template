@@ -1,0 +1,4 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["github>davidyokum/site-auth-kit-template//renovate/auth-kit"]
+}
