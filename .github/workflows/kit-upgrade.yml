@@ -155,7 +155,7 @@ jobs:
             gh label create 'auth-kit security fix' --color B60205 --description 'An auth-kit release that fixes a vulnerability' --force
             gh pr edit "$NUMBER" --add-label 'auth-kit security fix'
           fi
-          if [ "$state" = success ]; then next="Renovate squash-merges it once every check is green."; else next="It waits for the owner: read the release notes in the PR description, do any site steps, then merge."; fi
+          if [ "$state" = success ]; then next="Renovate squash-merges it once every check is green."; else next="Read the release notes in the PR description, do any site steps, then merge."; fi
           body="<!-- auth-kit-upgrade -->
           **auth-kit $FROM → $TO ($UPDATE).** Only the kit's lines in \`package.json\` and \`package-lock.json\` changed, pinned to the release's attested tarball; Amplify's npm accepts the lockfile.
 
