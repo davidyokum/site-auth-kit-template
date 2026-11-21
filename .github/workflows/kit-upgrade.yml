@@ -1,0 +1,170 @@
+name: auth-kit upgrade
+
+# Finishes Renovate's auth-kit upgrade PRs (branches renovate/auth-kit-*; renovate/auth-kit.json; auth-kit
+# ADR 0030). Renovate changes only package.json's tarball URL, since its own lockfile step re-resolves
+# the whole tree (the trap `auth-kit upgrade` exists to avoid). So this workflow:
+#   1. On Renovate's commit: checks the release tarball's checksum and provenance attestation, then runs
+#      that release's own `auth-kit upgrade` on the base branch's two files, which writes only the kit's
+#      lockfile lines and checks them with Amplify's npm (npm ci --dry-run). It commits that, then starts
+#      CI and itself on the new commit (a push with the workflow's token starts nothing by itself).
+#   2. On the finished commit: only auth-kit's lines changed, the lockfile pins the attested tarball, and
+#      Amplify's npm accepts it. Then it reads the release's notes and sets the `auth-kit/auto-merge`
+#      status: green only for a patch release whose notes say "Site steps: none". Anything else stays
+#      pending ("Waiting for the owner"), and Renovate never merges a PR with a pending status.
+# Other PRs skip it. It never deploys anything: merging to main does, as for any PR.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kit-upgrade-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  # Where the site's package.json is, and its CI workflow file, started on the finished commit
+  # (empty when the site has none: then SITE_CHECKS runs here instead).
+  SITE_DIR: .
+  SITE_CI: ci.yml
+  SITE_CHECKS: ''
+  # The npm in Amplify's build image (auth-kit's AMPLIFY_NPM_VERSION).
+  AMPLIFY_NPM: 10.9.9
+
+jobs:
+  upgrade:
+    name: auth-kit upgrade
+    if: >-
+      startsWith(github.head_ref || github.ref_name, 'renovate/auth-kit') &&
+      (github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write # push the lockfile commit to the Renovate branch
+      actions: write # start CI and this workflow on that commit
+      statuses: write # auth-kit/auto-merge
+      pull-requests: write # the summary comment
+      issues: write # the security label
+    env:
+      BRANCH: ${{ github.head_ref || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      # Actions are pinned to commit SHAs (tags noted alongside).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.BRANCH }}
+          fetch-depth: 100
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      - name: Find the PR and its base
+        id: pr
+        run: |
+          read -r number base < <(gh pr list --head "$BRANCH" --state open --json number,baseRefName --jq '.[0] | "\(.number) \(.baseRefName)"')
+          if [ -z "${number:-}" ] || [ "$number" = "null" ]; then
+            echo "No open PR for $BRANCH; nothing to do."
+            echo "number=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch --depth=100 origin "$base"
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+
+      - name: What the PR moves to
+        id: plan
+        if: steps.pr.outputs.number != ''
+        run: node "$SITE_DIR/scripts/kit-upgrade-ci.mjs" plan --base "origin/${{ steps.pr.outputs.base }}" --dir "$SITE_DIR" | tee -a "$GITHUB_OUTPUT"
+
+      - name: The release tarball's checksum and provenance attestation
+        if: steps.pr.outputs.number != ''
+        env:
+          TO: ${{ steps.plan.outputs.to }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/kit"
+          gh release download "v$TO" --repo davidyokum/auth-kit --pattern "auth-kit-$TO.tgz" --pattern SHA256SUMS --dir "$RUNNER_TEMP/kit"
+          (cd "$RUNNER_TEMP/kit" && sha256sum --check --ignore-missing SHA256SUMS)
+          gh attestation verify "$RUNNER_TEMP/kit/auth-kit-$TO.tgz" --repo davidyokum/auth-kit
+          gh release view "v$TO" --repo davidyokum/auth-kit --json body --jq .body > "$RUNNER_TEMP/kit/notes.md"
+
+      # 1. Renovate's commit: the kit's lockfile lines, from the base branch's two files.
+      - name: Write the kit's lockfile lines with the release's own auth-kit upgrade
+        if: steps.pr.outputs.number != '' && steps.plan.outputs.needs_lock == 'true'
+        working-directory: ${{ env.SITE_DIR }}
+        env:
+          TO: ${{ steps.plan.outputs.to }}
+          BASE: origin/${{ steps.pr.outputs.base }}
+        run: |
+          git checkout "$BASE" -- package.json package-lock.json
+          # The attested release's command, with only its own dependencies (no peers, no install scripts).
+          npm install --prefix "$RUNNER_TEMP/kit-cli" --omit=peer --ignore-scripts --no-audit --no-fund "$RUNNER_TEMP/kit/auth-kit-$TO.tgz"
+          node "$RUNNER_TEMP/kit-cli/node_modules/auth-kit/dist/bin/auth-kit.js" upgrade "$TO" --npm "$AMPLIFY_NPM"
+      - name: Commit, then start the checks on that commit
+        if: steps.pr.outputs.number != '' && steps.plan.outputs.needs_lock == 'true'
+        env:
+          TO: ${{ steps.plan.outputs.to }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add "$SITE_DIR/package.json" "$SITE_DIR/package-lock.json"
+          git commit -m "Lock auth-kit $TO to its attested release tarball (only the kit's lines)"
+          git push origin "HEAD:refs/heads/$BRANCH"
+          if [ -n "$SITE_CI" ]; then gh workflow run "$SITE_CI" --ref "$BRANCH"; fi
+          gh workflow run kit-upgrade.yml --ref "$BRANCH"
+          echo "Pushed the lockfile lines; CI and this workflow now run on $(git rev-parse --short HEAD)." >> "$GITHUB_STEP_SUMMARY"
+
+      # 2. The finished commit.
+      - name: Only auth-kit's lines changed, pinned to the attested tarball
+        id: check
+        if: steps.pr.outputs.number != '' && steps.plan.outputs.needs_lock == 'false'
+        env:
+          TO: ${{ steps.plan.outputs.to }}
+        run: node "$SITE_DIR/scripts/kit-upgrade-ci.mjs" check --base "origin/${{ steps.pr.outputs.base }}" --dir "$SITE_DIR" --tarball "$RUNNER_TEMP/kit/auth-kit-$TO.tgz"
+      - name: Amplify's npm accepts the lockfile (npm ci --dry-run)
+        if: steps.pr.outputs.number != '' && steps.plan.outputs.needs_lock == 'false'
+        working-directory: ${{ env.SITE_DIR }}
+        run: npx -y "npm@$AMPLIFY_NPM" ci --dry-run --ignore-scripts --no-audit --no-fund
+      - name: The site's checks (sites without a CI workflow)
+        if: steps.pr.outputs.number != '' && steps.plan.outputs.needs_lock == 'false' && env.SITE_CHECKS != ''
+        working-directory: ${{ env.SITE_DIR }}
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+        run: |
+          npm ci --ignore-scripts
+          bash -c "$SITE_CHECKS"
+      - name: Read the release notes; set auth-kit/auto-merge
+        if: steps.pr.outputs.number != '' && steps.plan.outputs.needs_lock == 'false'
+        env:
+          TO: ${{ steps.plan.outputs.to }}
+          FROM: ${{ steps.plan.outputs.from }}
+          UPDATE: ${{ steps.plan.outputs.update }}
+          NUMBER: ${{ steps.pr.outputs.number }}
+        run: |
+          node "$SITE_DIR/scripts/kit-upgrade-ci.mjs" decide --update "$UPDATE" --notes "$RUNNER_TEMP/kit/notes.md" > "$RUNNER_TEMP/decision"
+          cat "$RUNNER_TEMP/decision"
+          state=$(sed -n 's/^state=//p' "$RUNNER_TEMP/decision")
+          description=$(sed -n 's/^description=//p' "$RUNNER_TEMP/decision")
+          security=$(sed -n 's/^security=//p' "$RUNNER_TEMP/decision")
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$(git rev-parse HEAD)" \
+            -f state="$state" -f context=auth-kit/auto-merge -f description="$description" \
+            -f target_url="https://github.com/davidyokum/auth-kit/releases/tag/v$TO" > /dev/null
+          if [ -n "$security" ]; then
+            gh label create 'auth-kit security fix' --color B60205 --description 'An auth-kit release that fixes a vulnerability' --force
+            gh pr edit "$NUMBER" --add-label 'auth-kit security fix'
+          fi
+          if [ "$state" = success ]; then next="Renovate squash-merges it once every check is green."; else next="It waits for the owner: read the release notes in the PR description, do any site steps, then merge."; fi
+          body="<!-- auth-kit-upgrade -->
+          **auth-kit $FROM → $TO ($UPDATE).** Only the kit's lines in \`package.json\` and \`package-lock.json\` changed, pinned to the release's attested tarball; Amplify's npm accepts the lockfile.
+
+          **auth-kit/auto-merge:** $description $next${security:+
+
+          **Security fix:** $security. Merge this soon.}"
+          existing=$(gh api "repos/$GITHUB_REPOSITORY/issues/$NUMBER/comments" --paginate --jq '.[] | select(.body | startswith("<!-- auth-kit-upgrade -->")) | .id' | head -n1)
+          if [ -n "$existing" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$existing" -f body="$body" > /dev/null
+          else
+            gh pr comment "$NUMBER" --body "$body"
+          fi
