@@ -13,16 +13,20 @@ import { createMemoryProjectStore } from '@/lib/projects/memory';
 
 const state = vi.hoisted(() => ({
   requireUser: vi.fn(),
+  requireCan: vi.fn(),
   requireResourceRole: vi.fn(),
   create: vi.fn(),
   store: undefined as unknown as ReturnType<typeof createMemoryProjectStore>,
   log: undefined as unknown as MemoryAuditLog,
   forms: {} as Record<string, ReturnType<typeof vi.fn>>,
   resourceForms: {} as Record<string, ReturnType<typeof vi.fn>>,
+  setProfile: vi.fn(),
+  saveRolePolicy: vi.fn(),
+  saveInviteWelcome: vi.fn(),
   revalidatePath: vi.fn(),
 }));
 
-vi.mock('@/lib/auth', () => ({ auth: { requireUser: state.requireUser, requireResourceRole: state.requireResourceRole } }));
+vi.mock('@/lib/auth', () => ({ auth: { requireUser: state.requireUser, requireCan: state.requireCan, requireResourceRole: state.requireResourceRole } }));
 vi.mock('@/lib/projects', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/projects')>()),
   projectStore: () => state.store,
@@ -30,11 +34,18 @@ vi.mock('@/lib/projects', async (importOriginal) => ({
 vi.mock('@/lib/audit-log', () => ({ auditLog: () => state.log }));
 vi.mock('@/lib/resource-actions', () => ({ resourceActions: () => ({ create: state.create, forms: state.resourceForms }) }));
 vi.mock('@/lib/admin', () => ({ peopleActions: () => ({ forms: state.forms }) }));
+vi.mock('@/lib/admin-stores', () => ({
+  directoryProfileStore: () => ({ setProfile: state.setProfile }),
+  siteRolePolicyStore: () => ({ save: state.saveRolePolicy }),
+  inviteWelcomeStore: () => ({ save: state.saveInviteWelcome }),
+}));
+vi.mock('@/lib/accounts', () => ({ signInHelpActions: () => ({ forms: state.forms }) }));
 vi.mock('next/cache', () => ({ revalidatePath: state.revalidatePath }));
 
 const { createProjectAction } = await import('@/app/app/projects/actions');
 const project = await import('@/app/app/projects/[id]/actions');
 const people = await import('@/app/admin/people/actions');
+const settingsActions = await import('@/app/admin/settings/actions');
 
 const form = (fields: Record<string, string>) => {
   const data = new FormData();
@@ -54,8 +65,12 @@ function fakeCreate() {
 
 beforeEach(() => {
   state.requireUser.mockReset();
+  state.requireCan.mockReset();
   state.requireResourceRole.mockReset();
   state.create.mockReset();
+  state.setProfile.mockReset();
+  state.saveRolePolicy.mockReset();
+  state.saveInviteWelcome.mockReset();
   state.revalidatePath.mockReset();
   state.store = createMemoryProjectStore();
   state.log = createMemoryAuditLog();
@@ -193,8 +208,35 @@ describe('People actions (app/admin/people/actions.ts) delegate to auth-kit, whi
     const data = form({ sub: 'target' });
     expect(await people[name](null, data)).toMatchObject({ ok: true });
     expect(state.forms[name]).toHaveBeenCalledWith(null, data);
-    expect(state.revalidatePath).toHaveBeenCalledTimes(1);
+    expect(state.revalidatePath).toHaveBeenCalledTimes(2);
     expect(await people[name](null, data)).toMatchObject({ ok: false });
-    expect(state.revalidatePath).toHaveBeenCalledTimes(1);
+    expect(state.revalidatePath).toHaveBeenCalledTimes(2);
+  });
+
+  it('savePersonProfile, saveRolePolicy, and saveInviteWelcome enforce live capabilities before saving', async () => {
+    state.requireCan.mockResolvedValue(admin);
+    state.setProfile.mockResolvedValue({ firstName: 'Alex', lastName: 'Lee', title: 'Analyst' });
+    const profRes = await people.savePersonProfile(
+      null,
+      form({ sub: 'u-1', email: 'alex@example.org', firstName: 'Alex', lastName: 'Lee', title: 'Analyst' }),
+    );
+    expect(profRes).toMatchObject({ ok: true });
+    expect(state.requireCan).toHaveBeenCalledWith('people.manage', { live: true });
+
+    state.saveRolePolicy.mockResolvedValue({ version: 1, policy: { overrides: {}, customRoles: [] } });
+    const polRes = await people.saveRolePolicy(
+      null,
+      form({ expectedVersion: '0', reason: 'Add viewer scope', policyJson: '{"overrides":{},"customRoles":[]}' }),
+    );
+    expect(polRes).toMatchObject({ ok: true });
+    expect(state.requireCan).toHaveBeenCalledWith('settings.security', { live: true, recentSignIn: true });
+
+    state.saveInviteWelcome.mockResolvedValue({ version: 1, note: 'Welcome!' });
+    const welRes = await settingsActions.saveInviteWelcome(
+      null,
+      form({ expectedVersion: '0', note: 'Welcome!' }),
+    );
+    expect(welRes).toMatchObject({ ok: true });
+    expect(state.requireCan).toHaveBeenCalledWith('settings.security', { live: true, recentSignIn: true });
   });
 });

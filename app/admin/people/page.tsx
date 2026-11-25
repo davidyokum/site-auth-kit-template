@@ -1,23 +1,14 @@
 /**
- * People (primer §9; auth-kit ADR 0020): each button is one Cognito call and says when it takes
- * effect. The list is a live ListUsers snapshot; a failed fetch shows "—" and the reason, never an
- * empty list. Every admin role sees the list; inviting needs `people.manage`, and each action checks
- * its own capability on the server. The role picker shows each role's can and can't, "Compare
- * roles", and the note that these roles are for running the site, linked to the projects, with the
- * resource roles (Manager, Contributor, Reader on each project) summarized under it.
- *
- * On request sites (site.config.ts `accountCreation`), a "Pending requests" tab with a badge: who
- * asked, in their own (untrusted) words, approve (the ordinary invite) or decline (silently), and
- * "Decline all shown" for a flood. A count that can't be read shows "—" and why, never zero.
- *
- * Under the invite form, "Add several at once": paste up to 50 addresses, all as Member or one app role
- * (admin roles one at a time). Each gets the ordinary invite, audited one by one.
+ * People (primer §9; auth-kit ADR 0020, 0029, & 0031): live directory, Guarded Staged Role Builder,
+ * "Add several at once" invites, and pending access requests (on request sites).
  */
-import { InviteForm, PeoplePageTabs, PeopleTable, PendingRequestsTable, RoleMatrixTable } from 'auth-kit/admin/ui';
+import { PendingRequestsTable } from 'auth-kit/admin/ui';
 import { ResourceRolesSummary } from 'auth-kit/resources/ui';
 import type { Metadata } from 'next';
+import { PeopleWorkspace } from '@/components/admin/people-workspace';
 import { accessRequests } from '@/lib/accounts';
 import { peopleActions, stepUpHref } from '@/lib/admin';
+import { directoryProfileStore, siteRolePolicyStore, usageLedgerStore } from '@/lib/admin-stores';
 import { pages } from '@/lib/auth';
 import { site } from '@/site.config';
 import {
@@ -31,6 +22,8 @@ import {
   invite,
   inviteMany,
   resend,
+  savePersonProfile,
+  saveRolePolicy,
   signOutEverywhere,
   transferOwnership,
 } from './actions';
@@ -44,49 +37,61 @@ export default async function PeoplePage() {
   const viewer = { sub: user.sub, groups: [...user.groups], capabilities: [...user.capabilities] };
   const reauth = stepUpHref('/admin/people');
   const manages = user.capabilities.has('people.manage');
-  const list = await peopleActions().listPeople().catch(failure);
-  // The request queue: only on request sites, and only for admins who can act on it.
+  const canEditPolicy = user.capabilities.has('settings.security');
+
+  const [list, profiles, usage, rolePolicy] = await Promise.all([
+    peopleActions().listPeople().catch(failure),
+    directoryProfileStore().getAll().catch(() => ({})),
+    usageLedgerStore().get().catch(() => ({ accounts: {}, dailyCounts: {} })),
+    siteRolePolicyStore().get().catch(() => ({ policy: { overrides: {}, customRoles: [] }, version: 0, updatedAt: null, updatedBy: null })),
+  ]);
+
   const takesRequests = accessRequests() !== null;
   const requestList = takesRequests && manages ? await peopleActions().listAccessRequests().catch(failure) : null;
-  // Where access to one project lives, under every site role picker (auth-kit ADR 0020, 0022).
-  const itemAccess = { resourceAccessHref: '/app/projects', resourceAccess: <ResourceRolesSummary noun="project" href="/app/projects" /> };
-  const people = (
-    <div className="stack">
-      {manages ? (
-        <InviteForm action={invite} viewer={viewer} appRoles={site.appRoles} inviteDomains={site.inviteDomains} stepUpHref={reauth} inviteMany={inviteMany} signIn={site.signIn} {...itemAccess} />
-      ) : (
-        <details className="card">
-          <summary>Compare roles</summary>
-          <RoleMatrixTable />
-          <ResourceRolesSummary noun="project" href="/app/projects" />
-        </details>
-      )}
-      <div className="table-wrap">
-        <PeopleTable
-          people={list}
-          viewer={viewer}
-          appRoles={site.appRoles}
-          actions={{ resend, changeRole, transferOwnership, disable, enable, signOutEverywhere, deleteUser }}
-          stepUpHref={reauth}
-          {...itemAccess}
-        />
-      </div>
-    </div>
-  );
+
   return (
-    <div className="stack">
-      <h1>People</h1>
-      <PeoplePageTabs
-        people={people}
-        {...(requestList && {
-          requestList,
-          requests: (
-            <div className="table-wrap">
-              <PendingRequestsTable list={requestList} viewer={viewer} appRoles={site.appRoles} actions={{ approveRequest, declineRequest, declineRequests }} stepUpHref={reauth} />
-            </div>
-          ),
-        })}
-      />
-    </div>
+    <PeopleWorkspace
+      people={list}
+      viewer={viewer}
+      appRoles={site.appRoles}
+      inviteDomains={site.inviteDomains}
+      stepUpHref={reauth}
+      profiles={profiles}
+      usage={usage}
+      rolePolicy={rolePolicy}
+      canManagePeople={manages}
+      canEditPolicy={canEditPolicy}
+      signIn={site.signIn}
+      resourceAccess={<ResourceRolesSummary noun="project" href="/app/projects" />}
+      {...(requestList
+        ? {
+            requestsTab: {
+              countLabel: requestList.state === 'ok' ? String(requestList.requests.length) : '—',
+              node: (
+                <PendingRequestsTable
+                  list={requestList}
+                  viewer={viewer}
+                  appRoles={site.appRoles}
+                  actions={{ approveRequest, declineRequest, declineRequests }}
+                  stepUpHref={reauth}
+                />
+              ),
+            },
+          }
+        : {})}
+      actions={{
+        invite,
+        inviteMany,
+        resend,
+        changeRole,
+        transferOwnership,
+        disable,
+        enable,
+        signOutEverywhere,
+        deleteUser,
+        savePersonProfile,
+        saveRolePolicy,
+      }}
+    />
   );
 }

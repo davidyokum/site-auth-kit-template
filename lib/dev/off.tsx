@@ -3,7 +3,8 @@
  * code. auth-kit/ribbon is safe in production: previews (any branch but main) show a PREVIEW ribbon
  * naming the pool and who's signed in; the live site shows nothing.
  */
-import { EnvironmentRibbon, type EnvironmentRibbonInput, resolveEnvironment } from 'auth-kit/ribbon';
+import { type EnvironmentRibbonInput, resolveEnvironment } from 'auth-kit/ribbon';
+import { EnvironmentRibbon } from 'auth-kit/ribbon/client';
 import { auth } from '@/lib/auth';
 import { outputs } from '@/lib/outputs';
 

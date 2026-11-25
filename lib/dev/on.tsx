@@ -4,7 +4,8 @@
  * "Sign in as…" menu. Nothing in a build imports this file.
  */
 import { PersonaMenu } from 'auth-kit/dev/menu';
-import { EnvironmentRibbon, type EnvironmentRibbonInput } from 'auth-kit/ribbon';
+import type { EnvironmentRibbonInput } from 'auth-kit/ribbon';
+import { EnvironmentRibbon } from 'auth-kit/ribbon/client';
 import { cookies } from 'next/headers';
 import { matrixOverrides } from '@/dev-matrix';
 import { outputs } from '@/lib/outputs';

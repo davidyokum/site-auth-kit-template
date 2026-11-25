@@ -5,21 +5,22 @@
  * navigation isn't enough"). Admin pages are never cached (the root layout renders per request and
  * the proxy sends `Cache-Control: private, no-store`).
  */
-import Link from 'next/link';
+import { highestAdminRole } from 'auth-kit/admin';
 import type { ReactNode } from 'react';
+import { AdminNav } from '@/components/admin-nav';
 import { pages } from '@/lib/auth';
+import { displayRoleLabel } from '@/lib/role-catalog';
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
   const user = await pages.requireCan('people.read', { live: true });
+  const roleLabel = displayRoleLabel(highestAdminRole(user.groups));
   return (
-    <div className="stack">
-      <nav aria-label="Admin" className="site-nav">
-        <strong>Admin</strong>
-        <Link href="/admin">Overview</Link>
-        <Link href="/admin/people">People</Link>
-        {user.capabilities.has('audit.read') && <Link href="/admin/activity">Activity</Link>}
-        {user.capabilities.has('settings.security') && <Link href="/admin/settings">Settings</Link>}
-      </nav>
+    <div className="admin-shell">
+      <AdminNav
+        roleLabel={roleLabel}
+        canAudit={user.capabilities.has('audit.read')}
+        canSettings={user.capabilities.has('settings.security')}
+      />
       {children}
     </div>
   );

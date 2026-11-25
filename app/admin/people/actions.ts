@@ -5,12 +5,17 @@
  * validates input, re-reads the target, runs the guardrails (site-wide roles, ADR 0020), asks for a
  * recent sign-in before a grant, a transfer, or a delete, and logs intent and result (ADR 0010).
  */
-import type { ActionResult } from 'auth-kit/admin';
+import type { ActionResult, StoredRolePolicy } from 'auth-kit/admin';
 import { revalidatePath } from 'next/cache';
 import { peopleActions } from '@/lib/admin';
+import { directoryProfileStore, siteRolePolicyStore } from '@/lib/admin-stores';
+import { auth } from '@/lib/auth';
 
 function after(result: ActionResult): ActionResult {
-  if (result.ok) revalidatePath('/admin/people');
+  if (result.ok) {
+    revalidatePath('/admin');
+    revalidatePath('/admin/people');
+  }
   return result;
 }
 
@@ -68,4 +73,59 @@ export async function declineRequest(previous: ActionResult | null, data: FormDa
 /** "Decline all shown": up to 100 in one audited step, always silent (a flood of junk requests is one click). */
 export async function declineRequests(previous: ActionResult | null, data: FormData): Promise<ActionResult> {
   return after(await peopleActions().forms.declineRequests(previous, data));
+}
+
+export async function savePersonProfile(_previous: ActionResult | null, data: FormData): Promise<ActionResult> {
+  try {
+    const actor = await auth.requireCan('people.manage', { live: true });
+    const sub = String(data.get('sub') ?? '').trim();
+    const email = String(data.get('email') ?? '').trim();
+    const firstName = String(data.get('firstName') ?? '');
+    const lastName = String(data.get('lastName') ?? '');
+    const title = String(data.get('title') ?? '');
+    await directoryProfileStore().setProfile({
+      sub,
+      ...(email ? { email } : {}),
+      firstName,
+      lastName,
+      title,
+      actor: { sub: actor.sub, ...(actor.profile?.email ? { email: actor.profile.email } : {}) },
+    });
+    revalidatePath('/admin');
+    revalidatePath('/admin/people');
+    return { ok: true, message: 'Directory profile saved.' };
+  } catch (error) {
+    return {
+      ok: false,
+      code: 'unavailable',
+      error: error instanceof Error ? error.message : 'Couldn’t save directory profile.',
+      changed: 'nothing',
+    };
+  }
+}
+
+export async function saveRolePolicy(_previous: ActionResult | null, data: FormData): Promise<ActionResult> {
+  try {
+    const actor = await auth.requireCan('settings.security', { live: true, recentSignIn: true });
+    const expectedVersion = Number(data.get('expectedVersion') ?? 0);
+    const reason = String(data.get('reason') ?? '');
+    const rawJson = String(data.get('policyJson') ?? '{}');
+    const draft = JSON.parse(rawJson) as StoredRolePolicy;
+    await siteRolePolicyStore().save({
+      draft,
+      expectedVersion: Number.isFinite(expectedVersion) ? expectedVersion : 0,
+      reason,
+      actor: { sub: actor.sub, ...(actor.profile?.email ? { email: actor.profile.email } : {}) },
+    });
+    revalidatePath('/admin');
+    revalidatePath('/admin/people');
+    return { ok: true, message: 'Role policy saved and enforced live.' };
+  } catch (error) {
+    return {
+      ok: false,
+      code: 'invalid',
+      error: error instanceof Error ? error.message : 'Couldn’t save role policy.',
+      changed: 'nothing',
+    };
+  }
 }

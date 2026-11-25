@@ -4,12 +4,16 @@
  */
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { usageLedgerStore } from '@/lib/admin-stores';
 import { pages } from '@/lib/auth';
 
 export const metadata: Metadata = { title: 'Home' };
 
 export default async function MembersHome() {
   const user = await pages.requireUser();
+  void usageLedgerStore()
+    .recordVisit({ sub: user.sub, ...(user.profile?.email ? { email: user.profile.email } : {}), path: '/app' })
+    .catch(() => undefined);
   return (
     <div className="stack">
       <h1>Welcome</h1>

@@ -6,7 +6,15 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { BatchGetCommand, DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { mockClient } from 'aws-sdk-client-mock';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('@/lib/outputs', () => ({
+  outputs: {
+    auth: { aws_region: 'us-east-1', user_pool_id: 'us-east-1_PlaceholderPool', user_pool_client_id: 'placeholder' },
+    custom: {},
+  },
+}));
+
 import { createDynamoProjectStore } from '@/lib/projects/dynamo';
 import { createMemoryProjectStore } from '@/lib/projects/memory';
 import { type Project, ProjectEditConflict, PROJECT_ID_RE, PROJECT_LIMITS } from '@/lib/projects/types';

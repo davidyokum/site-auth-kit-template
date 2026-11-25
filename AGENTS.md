@@ -156,7 +156,7 @@ npm run waf:smoke -- --url https://<site>   # open sign-up sites, after every de
   account-creation tables and jobs, projects table, SSR compute role
 - `proxy.ts` default-deny proxy, token checks, session refresh, per-request CSP
 - `lib/auth.ts` `auth` and `pages` guards; `lib/capabilities.ts` the one capability map
-- `lib/admin.ts`, `lib/audit-log.ts`, `lib/alerts.ts` the admin area's actions, log, and alerts;
+- `lib/admin.ts`, `lib/admin-stores.ts`, `lib/role-catalog.ts`, `lib/audit-log.ts`, `lib/alerts.ts` the admin area's actions, Guarded Role Builder catalog and `SiteSettingsTable` stores (ADR 0031), log, and alerts;
   `lib/email.ts` the site's mailer: the sender, Reply-To, and the card's layout and footer
 - `lib/resources.ts` the resource types (project) and their switches, and the membership store; `lib/resource-actions.ts` the access actions; `lib/action-response.ts` their answers as HTTP
 - `lib/projects/` the sample items (replace with your own; keep the pattern)
